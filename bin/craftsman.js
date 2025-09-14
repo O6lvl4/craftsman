@@ -192,6 +192,68 @@ Usage:
       console.error('Unknown cartridge subcommand');
       process.exit(1);
     }
+    case 'extension': {
+      const section = (process.argv[3] || '').toLowerCase();
+      if (section !== 'store') {
+        console.log(`Usage:\n  craftsman extension store <search|versions|download> ...`);
+        process.exit(1);
+      }
+      const action = (process.argv[4] || '').toLowerCase();
+      const { ExtensionManager } = await import('../src/extensions/ExtensionManager.js');
+      const em = new ExtensionManager({});
+      await em.init();
+      if (action === 'search') {
+        const store = opts.store || process.argv[process.argv.indexOf('--store')+1];
+        const query = opts.query || process.argv[process.argv.indexOf('--query')+1];
+        const platform = opts.platform || (process.argv.includes('--platform') ? process.argv[process.argv.indexOf('--platform')+1] : undefined);
+        if (!store || !query) { console.error('Usage: craftsman extension store search --store <modrinth|curseforge|hangar> --query <text> [--platform paper|fabric|neoforge]'); process.exit(1); }
+        const res = await em.search({ store, query, platform });
+        return out(res);
+      }
+      if (action === 'versions') {
+        const store = opts.store || process.argv[process.argv.indexOf('--store')+1];
+        const projectId = opts.project || process.argv[process.argv.indexOf('--project')+1];
+        if (!store || !projectId) { console.error('Usage: craftsman extension store versions --store <...> --project <projectId>'); process.exit(1); }
+        const res = await em.versions({ store, projectId });
+        return out(res);
+      }
+      if (action === 'download') {
+        const store = opts.store || process.argv[process.argv.indexOf('--store')+1];
+        const projectId = opts.project || process.argv[process.argv.indexOf('--project')+1];
+        const versionId = opts.version || process.argv[process.argv.indexOf('--version')+1];
+        if (!store || !projectId || !versionId) { console.error('Usage: craftsman extension store download --store <...> --project <projectId> --version <versionId>'); process.exit(1); }
+        const res = await em.download({ store, projectId, versionId });
+        return out({ downloaded: true, ...res });
+      }
+      console.error('Unknown subcommand. Use: craftsman extension store <search|versions|download>');
+      process.exit(1);
+    }
+    case 'cartridge-ext': {
+      const sub = (process.argv[3] || '').toLowerCase();
+      const { CartridgeManager } = await import('../src/cartridge/CartridgeManager.js');
+      const cm = new CartridgeManager({ dataDir: DATA_DIR });
+      if (sub === 'add') {
+        const id = opts.id || process.argv[process.argv.indexOf('--id')+1];
+        const store = opts.store || process.argv[process.argv.indexOf('--store')+1];
+        const projectId = opts.project || process.argv[process.argv.indexOf('--project')+1];
+        const versionId = opts.version || process.argv[process.argv.indexOf('--version')+1];
+        const filename = opts.filename || process.argv[process.argv.indexOf('--filename')+1];
+        if (!id || !store || !projectId || !versionId || !filename) {
+          console.error('Usage: craftsman cartridge-ext add --id <cartridgeId> --store <...> --project <projectId> --version <versionId> --filename <filename>');
+          process.exit(1);
+        }
+        const deps = await cm.addExtension({ id, store, projectId, versionId, filename });
+        return out({ added: true, extensions: deps });
+      }
+      if (sub === 'list') {
+        const id = opts.id || process.argv[process.argv.indexOf('--id')+1];
+        if (!id) { console.error('Usage: craftsman cartridge-ext list --id <cartridgeId>'); process.exit(1); }
+        const deps = await cm.listExtensions({ id });
+        return out(deps);
+      }
+      console.log(`Usage:\n  craftsman cartridge-ext add --id <id> --store <...> --project <projectId> --version <versionId> --filename <filename>\n  craftsman cartridge-ext list --id <id>`);
+      process.exit(1);
+    }
   }
 }
 
