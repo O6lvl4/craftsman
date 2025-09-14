@@ -37,7 +37,7 @@ export class DockerProvider extends Provider {
     }
   }
 
-  async start({ containerName, type, version, memory = '4G', eula = true, onlineMode = true, motd, rconEnabled = true, rconPassword }) {
+  async start({ containerName, type, version, memory = '4G', eula = true, onlineMode = true, motd, rconEnabled = true, rconPassword, level, mountDataDir }) {
     // Ensure image
     await exec(`docker pull itzg/minecraft-server:latest`);
 
@@ -49,6 +49,7 @@ export class DockerProvider extends Provider {
       `-e ONLINE_MODE=${onlineMode ? 'TRUE' : 'FALSE'}`,
       `-e ENABLE_RCON=${rconEnabled ? 'TRUE' : 'FALSE'}`
     ];
+    if (level) env.push(`-e LEVEL=${level}`);
 
     let rcon = null;
     if (rconEnabled) {
@@ -60,7 +61,7 @@ export class DockerProvider extends Provider {
 
     if (motd) env.push(`-e MOTD=${JSON.stringify(motd)}`);
 
-    const dataAbs = path.resolve(this.dataDir);
+    const dataAbs = path.resolve(mountDataDir || this.dataDir);
     const runCmd = [
       'docker run -d',
       `--name ${containerName}`,
@@ -104,4 +105,3 @@ export class DockerProvider extends Provider {
     } catch { return []; }
   }
 }
-

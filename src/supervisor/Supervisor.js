@@ -5,24 +5,38 @@ export class Supervisor {
   constructor({ provider, dataDir }) {
     this.provider = provider;
     this.dataDir = dataDir;
-    this.runtimePath = path.join(this.dataDir, 'runtime.json');
+    this.runtimePath = path.join(this.dataDir, 'runtime.json'); // legacy
   }
 
-  async _readRuntime() {
+  _cartDir(id) { return path.join(this.dataDir, 'cartridges', id); }
+  _cartDataDir(id) { return path.join(this._cartDir(id), 'data'); }
+  _cartMetaPath(id) { return path.join(this._cartDir(id), 'cartridge.json'); }
+  _runtimePath(id) { return path.join(this._cartDir(id), 'runtime.json'); }
+
+  async _readRuntime(id) {
+    if (id) {
+      try { const raw = await fs.readFile(this._runtimePath(id), 'utf8'); return JSON.parse(raw); } catch { return {}; }
+    }
     try {
       const raw = await fs.readFile(this.runtimePath, 'utf8');
       return JSON.parse(raw);
     } catch { return {}; }
   }
 
-  async _writeRuntime(obj) {
-    await fs.mkdir(this.dataDir, { recursive: true });
+  async _writeRuntime(id, obj) {
+    if (id) {
+      await fs.mkdir(this._cartDir(id), { recursive: true });
+      return fs.writeFile(this._runtimePath(id), JSON.stringify(obj, null, 2));
+    }
+    await fs.mkdir(this.dataDir, { recursive: true }); // legacy
     await fs.writeFile(this.runtimePath, JSON.stringify(obj, null, 2));
   }
 
-  async status() {
-    const rt = await this._readRuntime();
-    const p = await this.provider.status(rt.containerName || 'mc-default');
+  async status({ cartridgeId } = {}) {
+    if (!cartridgeId) throw new Error('cartridgeId is required');
+    const name = `mc-${cartridgeId}`;
+    const rt = await this._readRuntime(cartridgeId);
+    const p = await this.provider.status(name);
     // Normalize
     return {
       running: p.running,
@@ -33,24 +47,26 @@ export class Supervisor {
     };
   }
 
-  async start({ type = 'paper', version = '1.21.8', memory = '4G', eula = true, onlineMode = true, motd, rconEnabled = true, rconPassword }) {
-    // If not explicitly provided, read server-spec.json (written by cartridge insert)
-    if (!type || !version) {
-      try {
-        const specRaw = await fs.readFile(path.join(this.dataDir, 'server-spec.json'), 'utf8');
-        const spec = JSON.parse(specRaw);
-        type = type || spec.type;
-        version = version || spec.version;
-      } catch {}
-      type = type || 'paper';
-      version = version || '1.21.8';
-    }
-    const name = 'mc-default';
+  async start({ cartridgeId, slot, type, version, memory = '4G', eula = true, onlineMode = true, motd, rconEnabled = true, rconPassword } = {}) {
+    if (!cartridgeId) throw new Error('cartridgeId is required');
+    const name = `mc-${cartridgeId}`;
     const existed = await this.provider.status(name);
     if (existed.running) {
       const err = new Error('Server is already running');
       err.code = 'ALREADY_RUNNING';
       throw err;
+    }
+    // resolve cartridge meta
+    if (!type || !version) {
+      const meta = JSON.parse(await fs.readFile(this._cartMetaPath(cartridgeId), 'utf8'));
+      type = type || meta.engine?.serverType || 'paper';
+      version = version || meta.engine?.version || '1.21.8';
+      slot = slot || meta.activeSlot || 'world';
+    } else {
+      try {
+        const meta = JSON.parse(await fs.readFile(this._cartMetaPath(cartridgeId), 'utf8'));
+        slot = slot || meta.activeSlot || 'world';
+      } catch { slot = slot || 'world'; }
     }
 
     const run = await this.provider.start({
@@ -62,13 +78,16 @@ export class Supervisor {
       onlineMode,
       motd,
       rconEnabled,
-      rconPassword
+      rconPassword,
+      level: slot,
+      mountDataDir: this._cartDataDir(cartridgeId)
     });
 
-    await this._writeRuntime({
+    await this._writeRuntime(cartridgeId, {
       containerName: name,
       type,
       version,
+      slot,
       ports: run.ports,
       rcon: run.rcon,
       startedAt: run.startedAt
@@ -77,16 +96,18 @@ export class Supervisor {
     return run;
   }
 
-  async stop({ forceKill = false } = {}) {
-    const rt = await this._readRuntime();
-    const out = await this.provider.stop(rt.containerName || 'mc-default', { forceKill });
-    // Keep runtime but mark not running by clearing startedAt
-    await this._writeRuntime({ ...rt, startedAt: null });
+  async stop({ cartridgeId, forceKill = false } = {}) {
+    if (!cartridgeId) throw new Error('cartridgeId is required');
+    const name = `mc-${cartridgeId}`;
+    const rt = await this._readRuntime(cartridgeId);
+    const out = await this.provider.stop(name, { forceKill });
+    await this._writeRuntime(cartridgeId, { ...rt, startedAt: null });
     return out;
   }
 
-  async logs({ tail = 200 } = {}) {
-    const rt = await this._readRuntime();
-    return await this.provider.logs(rt.containerName || 'mc-default', { tail });
+  async logs({ cartridgeId, tail = 200 } = {}) {
+    if (!cartridgeId) throw new Error('cartridgeId is required');
+    const name = `mc-${cartridgeId}`;
+    return await this.provider.logs(name, { tail });
   }
 }

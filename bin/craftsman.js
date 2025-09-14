@@ -61,36 +61,45 @@ Options:
       process.exit(0);
 
     case 'status': {
-      const s = await supervisor.status();
+      const cartridgeId = opts.cartridge || process.argv[process.argv.indexOf('--cartridge')+1];
+      if (!cartridgeId) { console.error('Error: --cartridge is required'); process.exit(1); }
+      const s = await supervisor.status({ cartridgeId });
       return out(s);
     }
     case 'start': {
-      const type = (opts.type || 'paper').toLowerCase();
-      const version = opts.version || '1.21.8';
+      const cartridgeId = opts.cartridge || process.argv[process.argv.indexOf('--cartridge')+1];
+      if (!cartridgeId) { console.error('Error: --cartridge is required'); process.exit(1); }
+      const type = (opts.type || '').toLowerCase();
+      const version = opts.version || '';
       const memory = opts.memory || '4G';
       const eula = String(opts.eula ?? 'true').toLowerCase() !== 'false';
       const onlineMode = String(opts.onlineMode ?? 'true').toLowerCase() !== 'false';
       const motd = opts.motd;
       const rconEnabled = String(opts.rconEnabled ?? 'true').toLowerCase() !== 'false';
       const rconPassword = opts.rconPassword;
-      const res = await supervisor.start({ type, version, memory, eula, onlineMode, motd, rconEnabled, rconPassword });
+      const slot = opts.slot || (process.argv.includes('--slot') ? process.argv[process.argv.indexOf('--slot')+1] : undefined);
+      const res = await supervisor.start({ cartridgeId, slot, type, version, memory, eula, onlineMode, motd, rconEnabled, rconPassword });
       return out({ message: 'started', ...res });
     }
     case 'stop': {
+      const cartridgeId = opts.cartridge || process.argv[process.argv.indexOf('--cartridge')+1];
+      if (!cartridgeId) { console.error('Error: --cartridge is required'); process.exit(1); }
       const forceKill = !!(opts.force || opts.forceKill);
-      const res = await supervisor.stop({ forceKill });
+      const res = await supervisor.stop({ cartridgeId, forceKill });
       return out({ message: forceKill ? 'force killed' : 'stopped', ...res });
     }
     case 'logs': {
+      const cartridgeId = opts.cartridge || process.argv[process.argv.indexOf('--cartridge')+1];
+      if (!cartridgeId) { console.error('Error: --cartridge is required'); process.exit(1); }
       const tail = parseInt(opts.tail || '200', 10) || 200;
       if (opts.follow && provider instanceof DockerProvider) {
         // Stream docker logs -f for live output
-        const name = 'mc-default';
+        const name = `mc-${cartridgeId}`;
         const p = spawn('bash', ['-lc', `docker logs -f --tail=${tail} ${name}`], { stdio: 'inherit' });
         p.on('exit', (code) => process.exit(code ?? 0));
         return;
       }
-      const lines = await supervisor.logs({ tail });
+      const lines = await supervisor.logs({ cartridgeId, tail });
       if (json) return out({ lines });
       lines.forEach(l => console.log(l));
       return;
@@ -107,6 +116,7 @@ Usage:
   craftsman cartridge create --id <id> --type paper|fabric|neoforge --version <ver> [--name NAME]
   craftsman cartridge list [--json]
   craftsman cartridge save --id <id> --slot <slot>
+  craftsman cartridge set-active --id <id> --slot <slot>
   craftsman cartridge insert --id <id> [--slot <slot>] [--force]
 `);
         return;
@@ -129,20 +139,26 @@ Usage:
         const r = await cm.saveFromCurrent({ id, slot });
         return jout({ saved: r });
       }
+      if (sub === 'set-active') {
+        const id = opts.id || process.argv[process.argv.indexOf('--id')+1];
+        const slot = opts.slot || process.argv[process.argv.indexOf('--slot')+1];
+        const meta = await cm.setActive({ id, slot });
+        return jout({ id, activeSlot: meta.activeSlot });
+      }
       if (sub === 'insert') {
         const id = opts.id || process.argv[process.argv.indexOf('--id')+1];
         const slot = opts.slot || (process.argv.includes('--slot') ? process.argv[process.argv.indexOf('--slot')+1] : undefined);
         const force = !!(opts.force || process.argv.includes('--force'));
         // If running and force, stop first
-        const s = await supervisor.status();
+        const s = await supervisor.status({ cartridgeId: id });
         if (s.running && force) {
-          await supervisor.stop({ forceKill: false }).catch(()=>{});
+          await supervisor.stop({ cartridgeId: id, forceKill: false }).catch(()=>{});
         } else if (s.running && !force) {
           console.error('Server is running. Use --force to stop before insert.');
           process.exit(1);
         }
         const applied = await cm.insert({ id, slot, force });
-        return jout({ inserted: true, spec: applied.spec });
+        return jout({ inserted: true, id, slot: applied.spec?.slot || slot || null });
       }
       console.error('Unknown cartridge subcommand');
       process.exit(1);
