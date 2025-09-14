@@ -34,6 +34,17 @@ export class Supervisor {
   }
 
   async start({ type = 'paper', version = '1.21.8', memory = '4G', eula = true, onlineMode = true, motd, rconEnabled = true, rconPassword }) {
+    // If not explicitly provided, read server-spec.json (written by cartridge insert)
+    if (!type || !version) {
+      try {
+        const specRaw = await fs.readFile(path.join(this.dataDir, 'server-spec.json'), 'utf8');
+        const spec = JSON.parse(specRaw);
+        type = type || spec.type;
+        version = version || spec.version;
+      } catch {}
+      type = type || 'paper';
+      version = version || '1.21.8';
+    }
     const name = 'mc-default';
     const existed = await this.provider.status(name);
     if (existed.running) {
@@ -79,4 +90,3 @@ export class Supervisor {
     return await this.provider.logs(rt.containerName || 'mc-default', { tail });
   }
 }
-

@@ -95,6 +95,58 @@ Options:
       lines.forEach(l => console.log(l));
       return;
     }
+    case 'cartridge': {
+      const sub = (opts._sub = process.argv[3]);
+      const { CartridgeManager } = await import('../src/cartridge/CartridgeManager.js');
+      const cm = new CartridgeManager({ dataDir: DATA_DIR });
+      const jout = (o) => json ? console.log(JSON.stringify(o, null, 2)) : console.log(o);
+      if (!sub || sub === 'help') {
+        console.log(`Craftsman Cartridge
+
+Usage:
+  craftsman cartridge create --id <id> --type paper|fabric|neoforge --version <ver> [--name NAME]
+  craftsman cartridge list [--json]
+  craftsman cartridge save --id <id> --slot <slot>
+  craftsman cartridge insert --id <id> [--slot <slot>] [--force]
+`);
+        return;
+      }
+      if (sub === 'create') {
+        const id = opts.id || process.argv[process.argv.indexOf('--id')+1];
+        const type = opts.type || process.argv[process.argv.indexOf('--type')+1];
+        const version = opts.version || process.argv[process.argv.indexOf('--version')+1];
+        const name = opts.name;
+        const meta = await cm.create({ id, type, version, name });
+        return jout({ created: meta.id, type: type, version: version });
+      }
+      if (sub === 'list') {
+        const list = await cm.list();
+        return jout(list);
+      }
+      if (sub === 'save') {
+        const id = opts.id || process.argv[process.argv.indexOf('--id')+1];
+        const slot = opts.slot || process.argv[process.argv.indexOf('--slot')+1];
+        const r = await cm.saveFromCurrent({ id, slot });
+        return jout({ saved: r });
+      }
+      if (sub === 'insert') {
+        const id = opts.id || process.argv[process.argv.indexOf('--id')+1];
+        const slot = opts.slot || (process.argv.includes('--slot') ? process.argv[process.argv.indexOf('--slot')+1] : undefined);
+        const force = !!(opts.force || process.argv.includes('--force'));
+        // If running and force, stop first
+        const s = await supervisor.status();
+        if (s.running && force) {
+          await supervisor.stop({ forceKill: false }).catch(()=>{});
+        } else if (s.running && !force) {
+          console.error('Server is running. Use --force to stop before insert.');
+          process.exit(1);
+        }
+        const applied = await cm.insert({ id, slot, force });
+        return jout({ inserted: true, spec: applied.spec });
+      }
+      console.error('Unknown cartridge subcommand');
+      process.exit(1);
+    }
   }
 }
 
@@ -102,4 +154,3 @@ run().catch((e) => {
   console.error('[craftsman] Error:', e.message || e);
   process.exit(1);
 });
-
