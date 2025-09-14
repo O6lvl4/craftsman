@@ -61,6 +61,16 @@ Minecraft サーバー管理の最小・堅牢な CLI。Docker 版 itzg/minecraf
 
   `craftsman cartridge insert --id <id> [--slot <slot>] [--force]`
 
+- 拡張（Cartridge 内 CRUD）
+
+  `craftsman cartridge extension list --id <id>`
+
+  `craftsman cartridge extension add --id <id> --store <store> --project <projectId> --version <versionId> --filename <filename>`
+
+  `craftsman cartridge extension update --id <id> --store <store> --project <projectId> --version <versionId> --filename <filename>`
+
+  `craftsman cartridge extension remove --id <id> --store <store> --project <projectId>`
+
 ## バックアップ / リストア（カセット単位）
 
 - バックアップ（オンライン、RCON で save-off → save-all flush → tar → save-on）
@@ -102,6 +112,30 @@ Minecraft サーバー管理の最小・堅牢な CLI。Docker 版 itzg/minecraf
 5) バックアップ
 
    craftsman backup --cartridge alpha --name first
+
+## 拡張ストア（検索→バージョン→DL→カセット登録）
+
+1) 検索（例）
+
+   craftsman extension store search --store modrinth --query sodium --platform fabric
+
+2) バージョン一覧
+
+   craftsman extension store versions --store modrinth --project <projectId>
+
+3) ダウンロード
+
+   craftsman extension store download --store modrinth --project <projectId> --version <versionId>
+
+4) カセットに依存登録（CRUD）
+
+   craftsman cartridge extension add --id <id> --store modrinth --project <projectId> --version <versionId> --filename <filename>
+
+   craftsman cartridge extension list --id <id>
+
+   craftsman cartridge extension update --id <id> --store ... --project ... --version ... --filename ...
+
+   craftsman cartridge extension remove --id <id> --store ... --project ...
 
 ## データ構造（Git 管理外）
 
