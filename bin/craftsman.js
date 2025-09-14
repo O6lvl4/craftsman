@@ -61,10 +61,16 @@ Options:
       process.exit(0);
 
     case 'status': {
-      const cartridgeId = opts.cartridge || process.argv[process.argv.indexOf('--cartridge')+1];
-      if (!cartridgeId) { console.error('Error: --cartridge is required'); process.exit(1); }
-      const s = await supervisor.status({ cartridgeId });
-      return out(s);
+      const hasArg = process.argv.includes('--cartridge');
+      if (hasArg) {
+        const cartridgeId = opts.cartridge || process.argv[process.argv.indexOf('--cartridge')+1];
+        if (!cartridgeId) { console.error('Error: --cartridge requires a value'); process.exit(1); }
+        const s = await supervisor.status({ cartridgeId });
+        return out(s);
+      }
+      // 省略時は全カセットのステータス一覧
+      const list = await supervisor.statuses();
+      return out(list);
     }
     case 'start': {
       const cartridgeId = opts.cartridge || process.argv[process.argv.indexOf('--cartridge')+1];

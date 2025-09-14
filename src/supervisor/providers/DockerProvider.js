@@ -21,6 +21,7 @@ export class DockerProvider extends Provider {
       const envJoined = rest.slice(0, -1).join(' ');
       const type = /TYPE=(\w+)/.exec(envJoined)?.[1]?.toLowerCase();
       const version = /VERSION=([\w\.\-]+)/.exec(envJoined)?.[1];
+      const level = /LEVEL=([^\s]+)/.exec(envJoined)?.[1];
       // Ports: we can inspect if needed
       let ports = { server: 25565 };
       try {
@@ -31,7 +32,7 @@ export class DockerProvider extends Provider {
         const hostPort = pmap[portKey]?.[0]?.HostPort;
         if (hostPort) ports = { server: Number(hostPort) };
       } catch {}
-      return { running, type, version, ports, startedAt };
+      return { running, type, version, ports, startedAt, level };
     } catch {
       return { running: false };
     }

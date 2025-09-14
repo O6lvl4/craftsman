@@ -39,12 +39,26 @@ export class Supervisor {
     const p = await this.provider.status(name);
     // Normalize
     return {
+      id: cartridgeId,
       running: p.running,
       type: p.type || rt.type,
       version: p.version || rt.version,
       ports: p.ports || rt.ports,
-      startedAt: p.startedAt || rt.startedAt
+      startedAt: p.startedAt || rt.startedAt,
+      slot: p.level || rt.slot
     };
+  }
+
+  async statuses() {
+    const root = path.join(this.dataDir, 'cartridges');
+    let ids = [];
+    try { ids = await fs.readdir(root); } catch { ids = []; }
+    const out = [];
+    for (const id of ids) {
+      const stat = await this.status({ cartridgeId: id }).catch(() => null);
+      if (stat) out.push(stat);
+    }
+    return out;
   }
 
   async start({ cartridgeId, slot, type, version, memory = '4G', eula = true, onlineMode = true, motd, rconEnabled = true, rconPassword } = {}) {

@@ -1,0 +1,19 @@
+{
+  "id": "test1",
+  "name": "Survival",
+  "engine": {
+    "serverType": "paper",
+    "version": "1.21.8"
+  },
+  "activeSlot": "day1",
+  "saves": {
+    "slots": [
+      {
+        "id": "day1",
+        "name": "day1",
+        "created": "2025-09-14T05:09:13.573Z"
+      }
+    ]
+  },
+  "createdAt": "2025-09-14T05:08:34.705Z"
+}

@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "cli": "node bin/craftsman.js"
+    "cli": "node bin/craftsman.js",
+    "install:global": "npm i -g .",
+    "link:global": "npm link",
+    "unlink:global": "npm unlink -g craftsman || true && npm unlink || true"
   },
   "bin": {
     "craftsman": "bin/craftsman.js"
