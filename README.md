@@ -1,66 +1,122 @@
 # Craftsman
 
-Craftsman is a minimal, robust Minecraft server manager with a clean REST API and a battle‑tested Docker provider (based on itzg/minecraft-server).
+Minecraft サーバー管理の最小・堅牢な CLI。Docker 版 itzg/minecraft-server を第一級の実行プロバイダとして採用し、カセット（Cartridge）を単位に冪等的な起動/停止/バックアップ/リストアを提供します。
 
-## Quick Start (Docker)
+## インストール（グローバル）
 
-Prereqs: Docker available on PATH
+前提: Docker が動作していること（`docker ps` が成功）
 
-1) Start API
+1) リポジトリ直下で（publish 不要）
 
-   node src/index.js
+   npm run install:global
 
-2) Start a Paper server
+   もしくは開発向けリンク
 
-   curl -X POST http://localhost:3100/api/server/start \
-     -H 'Content-Type: application/json' \
-     -d '{"type":"paper","version":"1.21.8","memory":"8G","eula":true}'
+   npm run link:global
 
-3) Status / Logs / Stop
+2) 確認
 
-   curl http://localhost:3100/api/server/status
-   curl http://localhost:3100/api/server/logs?tail=200
-   curl -X POST http://localhost:3100/api/server/stop -H 'Content-Type: application/json' -d '{}'
-   # force
-   curl -X POST http://localhost:3100/api/server/stop -H 'Content-Type: application/json' -d '{"forceKill":true}'
+   craftsman --help
 
-## API
+## 基本コマンド（サーバ）
 
-- GET  /health
-- GET  /api/server/status
-- POST /api/server/start   { type, version, memory?, eula?, onlineMode?, motd?, rconEnabled?, rconPassword? }
-- POST /api/server/stop    { forceKill? }
-- GET  /api/server/logs?tail=200
+- ステータス
 
-## Data
+  - すべてのカセット: `craftsman status [--json]`
+  - 個別カセット: `craftsman status --cartridge <id> [--json]`
 
-- data/ → mapped to container /data
-- data/runtime.json → container id, ports, rcon
-- data/server.pid → optional for local provider
+- 起動（冪等）
 
-## CLI (no API required)
+  `craftsman start --cartridge <id> [--slot <slot>] [--type paper|fabric|neoforge] [--version <ver>] [--memory 8G] [--eula true] [--onlineMode true] [--motd "..."] [--rconEnabled true] [--rconPassword ...]`
 
-Run via npm script or directly with node.
+  備考: `--type/--version` を省略すると、カセットの `cartridge.json`（engine）を使用。`--slot` 未指定時は `activeSlot` を使用。内部的にはカセットの data/ をコンテナ `/data` にマウントし、`LEVEL=<slot>` でワールドを選択します。
 
-Start/Status/Logs/Stop:
+- 停止
 
-  # Start Paper 1.21.8 with 8G (Docker provider)
-  npm run cli -- start --type paper --version 1.21.8 --memory 8G
+  `craftsman stop --cartridge <id> [--force]`
 
-  # Status (JSON output)
-  npm run cli -- status --json
+- ログ
 
-  # Logs (last 200)
-  npm run cli -- logs --tail 200
+  `craftsman logs --cartridge <id> [--tail 200] [--follow]`
 
-  # Follow logs (Docker provider only)
-  npm run cli -- logs --tail 200 --follow
+## カセット（Cartridge）
 
-  # Stop (graceful → force)
-  npm run cli -- stop
-  npm run cli -- stop --force
+- 作成
 
-Use local provider for development:
+  `craftsman cartridge create --id <id> --type paper|fabric|neoforge --version <ver> [--name NAME]`
 
-  npm run cli -- status --provider local
-  npm run cli -- start --provider local --type paper --version 1.21.8
+- 一覧
+
+  `craftsman cartridge list [--json]`
+
+- ワールド保存（移行用：現行の /data/world* → スロットへ取り込み）
+
+  `craftsman cartridge save --id <id> --slot <slot>`
+
+- アクティブスロット設定
+
+  `craftsman cartridge set-active --id <id> --slot <slot>`
+
+- 挿入（稼働中は --force 推奨。新モデルでは activeSlot の設定が主目的）
+
+  `craftsman cartridge insert --id <id> [--slot <slot>] [--force]`
+
+## バックアップ / リストア（カセット単位）
+
+- バックアップ（オンライン、RCON で save-off → save-all flush → tar → save-on）
+
+  `craftsman backup --cartridge <id> [--name NAME] [--json]`
+
+  出力例: `{ file, size, startedAt, finishedAt }`
+
+- バックアップ一覧
+
+  `craftsman backups list --cartridge <id> [--json]`
+
+- リストア（停止→展開、必要なら現行データ退避）
+
+  `craftsman restore --cartridge <id> --file <path_to_tgz> [--keep-current]`
+
+  備考: `--keep-current` で `data/restore-backup/<timestamp>/` に退避。
+
+## 例: 新規カセットで遊ぶ（Paper 1.21.8）
+
+1) 作成
+
+   craftsman cartridge create --id alpha --type paper --version 1.21.8 --name "Alpha"
+
+2) 新規スロットで起動（初回は新しいワールドが生成される）
+
+   craftsman start --cartridge alpha --slot fresh1 --memory 8G
+
+3) 状態/ログ
+
+   craftsman status --cartridge alpha --json
+
+   craftsman logs --cartridge alpha --tail 200 --follow
+
+4) 停止
+
+   craftsman stop --cartridge alpha
+
+5) バックアップ
+
+   craftsman backup --cartridge alpha --name first
+
+## データ構造（Git 管理外）
+
+- data/ は生成物のため Git 無視（data/README.md 参照）
+- カセット単位の構造
+  - data/
+    - cartridges/
+      - <id>/
+        - data/           … コンテナ `/data` にマウント（LEVEL=<slot>）
+        - backups/        … バックアップ(.tgz)
+        - runtime.json    … 実行情報（開始時刻・ポート等）
+
+## 備考（オプション）
+
+- Provider: 既定は Docker。開発用に local を指定可能（`--provider local`）
+- REST API は任意で利用可能（`node src/index.js`）
+  - GET /health
+  - GET /api/server/status / POST /api/server/start / POST /api/server/stop / GET /api/server/logs
