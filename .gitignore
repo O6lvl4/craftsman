@@ -1,5 +1,13 @@
-node_modules
+node_modules/
 .DS_Store
-data/runtime.json
+
+# Ignore all runtime server data (worlds, jars, logs, backups, etc.)
+data/**
+!data/.gitkeep
+!data/README.md
+
+# Local provider PID (legacy; kept for completeness)
 data/server.pid
+
+# Logs in repo root (if any)
 *.log
