@@ -115,6 +115,29 @@ export class CartridgeManager {
     return meta.extensions || [];
   }
 
+  async updateExtension({ id, store, projectId, versionId, filename }) {
+    if (!id || !store || !projectId || !versionId || !filename) throw new Error('id, store, projectId, versionId, filename are required');
+    const metaPath = path.join(this.cartsDir, id, 'cartridge.json');
+    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+    const exts = meta.extensions || [];
+    const idx = exts.findIndex(d => d.store===store && d.projectId===projectId);
+    if (idx === -1) throw new Error('extension not found');
+    exts[idx] = { store, projectId, versionId, filename };
+    meta.extensions = exts;
+    await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
+    return exts[idx];
+  }
+
+  async removeExtension({ id, store, projectId }) {
+    if (!id || !store || !projectId) throw new Error('id, store, projectId are required');
+    const metaPath = path.join(this.cartsDir, id, 'cartridge.json');
+    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+    const before = (meta.extensions || []).length;
+    meta.extensions = (meta.extensions || []).filter(d => !(d.store===store && d.projectId===projectId));
+    await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
+    return { removed: before - (meta.extensions || []).length };
+  }
+
   async setActive({ id, slot }) {
     if (!id || !slot) throw new Error('id and slot are required');
     const metaPath = path.join(this.cartsDir, id, 'cartridge.json');

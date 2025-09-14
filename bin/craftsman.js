@@ -147,8 +147,42 @@ Usage:
   craftsman cartridge save --id <id> --slot <slot>
   craftsman cartridge set-active --id <id> --slot <slot>
   craftsman cartridge insert --id <id> [--slot <slot>] [--force]
+  craftsman cartridge extension <list|add|update|remove> [...]
 `);
         return;
+      }
+      if (sub === 'extension') {
+        const action = (process.argv[4] || '').toLowerCase();
+        const id = opts.id || (process.argv.includes('--id') ? process.argv[process.argv.indexOf('--id')+1] : undefined);
+        if (!id) { console.error('Error: --id <cartridgeId> is required'); process.exit(1); }
+        if (action === 'list') {
+          const deps = await cm.listExtensions({ id });
+          return jout(deps);
+        }
+        if (action === 'add') {
+          const store = opts.store || process.argv[process.argv.indexOf('--store')+1];
+          const projectId = opts.project || process.argv[process.argv.indexOf('--project')+1];
+          const versionId = opts.version || process.argv[process.argv.indexOf('--version')+1];
+          const filename = opts.filename || process.argv[process.argv.indexOf('--filename')+1];
+          const deps = await cm.addExtension({ id, store, projectId, versionId, filename });
+          return jout({ added: true, extensions: deps });
+        }
+        if (action === 'update') {
+          const store = opts.store || process.argv[process.argv.indexOf('--store')+1];
+          const projectId = opts.project || process.argv[process.argv.indexOf('--project')+1];
+          const versionId = opts.version || process.argv[process.argv.indexOf('--version')+1];
+          const filename = opts.filename || process.argv[process.argv.indexOf('--filename')+1];
+          const e = await cm.updateExtension({ id, store, projectId, versionId, filename });
+          return jout({ updated: true, extension: e });
+        }
+        if (action === 'remove') {
+          const store = opts.store || process.argv[process.argv.indexOf('--store')+1];
+          const projectId = opts.project || process.argv[process.argv.indexOf('--project')+1];
+          const r = await cm.removeExtension({ id, store, projectId });
+          return jout({ removed: r.removed });
+        }
+        console.log(`Usage:\n  craftsman cartridge extension list --id <id>\n  craftsman cartridge extension add --id <id> --store <...> --project <projectId> --version <versionId> --filename <filename>\n  craftsman cartridge extension update --id <id> --store <...> --project <projectId> --version <versionId> --filename <filename>\n  craftsman cartridge extension remove --id <id> --store <...> --project <projectId>`);
+        process.exit(1);
       }
       if (sub === 'create') {
         const id = opts.id || process.argv[process.argv.indexOf('--id')+1];
