@@ -57,6 +57,14 @@ export class CartridgeManager {
     return meta;
   }
 
+  async remove({ id }) {
+    if (!id) throw new Error('id is required');
+    const dir = path.join(this.cartsDir, id);
+    if (!(await exists(dir))) throw new Error('cartridge not found');
+    await rmrf(dir);
+    return { removed: true, id };
+  }
+
   async saveFromCurrent({ id, slot }) {
     if (!id || !slot) throw new Error('id and slot are required');
     const dir = path.join(this.cartsDir, id);

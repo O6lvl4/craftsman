@@ -143,6 +143,7 @@ Options:
 
 Usage:
   craftsman cartridge create --id <id> --type paper|fabric|neoforge --version <ver> [--name NAME]
+  craftsman cartridge remove --id <id>
   craftsman cartridge list [--json]
   craftsman cartridge save --id <id> --slot <slot>
   craftsman cartridge set-active --id <id> --slot <slot>
@@ -191,6 +192,12 @@ Usage:
         const name = opts.name;
         const meta = await cm.create({ id, type, version, name });
         return jout({ created: meta.id, type: type, version: version });
+      }
+      if (sub === 'remove') {
+        const id = opts.id || process.argv[process.argv.indexOf('--id')+1];
+        if (!id) { console.error('Error: --id is required'); process.exit(1); }
+        const res = await cm.remove({ id });
+        return jout(res);
       }
       if (sub === 'list') {
         const list = await cm.list();

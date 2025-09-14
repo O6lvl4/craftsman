@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(mkdir:*)",
+      "WebSearch",
+      "Bash(npm run test:e2e:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(node:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker logs:*)",
+      "Bash(rm:*)",
+      "Bash(./bin/craftsman.js cartridge create:*)",
+      "Bash(./bin/craftsman.js start:*)",
+      "Bash(./bin/craftsman.js logs:*)",
+      "Bash(./bin/craftsman.js stop:*)",
+      "Bash(rsync:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(for mod in FarmersDelight-1.21.1-1.2.9.jar jei-1.21.1-neoforge-19.21.0.247.jar)",
+      "Bash(do [ -f \"$mod.disabled\" ])",
+      "Bash(done)",
+      "Bash(java:*)",
+      "Bash(cd:*)",
+      "Bash(docker exec:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": [],
+    "additionalDirectories": [
+      "/Users/o6lvl4/workspace/github.com/O6lvl4/minecraft-local-server/admin",
+      "/Users/o6lvl4/Library",
+      "/Users/o6lvl4/Downloads"
+    ]
+  }
+}
