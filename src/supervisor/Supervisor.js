@@ -124,4 +124,88 @@ export class Supervisor {
     const name = `mc-${cartridgeId}`;
     return await this.provider.logs(name, { tail });
   }
+
+  async backup({ cartridgeId, name } = {}) {
+    if (!cartridgeId) throw new Error('cartridgeId is required');
+    const startedAt = Date.now();
+    const meta = JSON.parse(await fs.readFile(this._cartMetaPath(cartridgeId), 'utf8'));
+    const rt = await this._readRuntime(cartridgeId);
+    const slot = rt.slot || meta.activeSlot || 'world';
+    const containerName = `mc-${cartridgeId}`;
+    const backupsDir = path.join(this._cartDir(cartridgeId), 'backups');
+    await fs.mkdir(backupsDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').replace(/\..+/, '');
+    const base = name || `backup-${stamp}`;
+    const file = path.join(backupsDir, `${base}.tgz`);
+
+    // Online backup: try RCON flush cycle
+    await this.provider.rcon(containerName, 'save-off').catch(()=>({ok:false}));
+    await this.provider.rcon(containerName, 'save-all flush').catch(()=>({ok:false}));
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Build tar of level directories
+    const dataDir = this._cartDataDir(cartridgeId);
+    const entries = [slot, `${slot}_nether`, `${slot}_the_end`];
+    const fsEntries = [];
+    for (const e of entries) {
+      try { await fs.access(path.join(dataDir, e)); fsEntries.push(e); } catch {}
+    }
+    if (fsEntries.length === 0) throw new Error('No level directories found to backup');
+
+    const { exec: execCb } = await import('child_process');
+    const { promisify } = await import('util');
+    const exec = promisify(execCb);
+    await exec(`tar czf ${JSON.stringify(file)} -C ${JSON.stringify(dataDir)} ${fsEntries.map(s=>JSON.stringify(s)).join(' ')}`);
+
+    // Resume saves
+    await this.provider.rcon(containerName, 'save-on').catch(()=>({ok:false}));
+
+    const stat = await fs.stat(file);
+    return { file, size: stat.size, startedAt: new Date(startedAt).toISOString(), finishedAt: new Date().toISOString() };
+  }
+
+  async listBackups({ cartridgeId } = {}) {
+    if (!cartridgeId) throw new Error('cartridgeId is required');
+    const dir = path.join(this._cartDir(cartridgeId), 'backups');
+    let files = [];
+    try { files = await fs.readdir(dir); } catch { return []; }
+    const out = [];
+    for (const f of files) {
+      if (!f.endsWith('.tgz')) continue;
+      const p = path.join(dir, f);
+      const st = await fs.stat(p);
+      out.push({ file: p, size: st.size, modifiedAt: st.mtime.toISOString() });
+    }
+    return out.sort((a,b)=> (a.modifiedAt < b.modifiedAt ? 1 : -1));
+  }
+
+  async restore({ cartridgeId, file, keepCurrent = true } = {}) {
+    if (!cartridgeId) throw new Error('cartridgeId is required');
+    if (!file) throw new Error('file is required');
+    const meta = JSON.parse(await fs.readFile(this._cartMetaPath(cartridgeId), 'utf8'));
+    const rt = await this._readRuntime(cartridgeId);
+    const slot = rt.slot || meta.activeSlot || 'world';
+    // Ensure stopped
+    try { await this.stop({ cartridgeId }); } catch {}
+    const dataDir = this._cartDataDir(cartridgeId);
+    const backupDir = path.join(dataDir, 'restore-backup', new Date().toISOString().replace(/[:T]/g,'-').replace(/\..+/,''));
+    // Move current level dirs if needed
+    if (keepCurrent) {
+      await fs.mkdir(backupDir, { recursive: true });
+      const candidates = [slot, `${slot}_nether`, `${slot}_the_end`];
+      for (const c of candidates) {
+        const src = path.join(dataDir, c);
+        try { await fs.access(src); await fs.rename(src, path.join(backupDir, c)); } catch {}
+      }
+    } else {
+      const { rm } = await import('fs/promises');
+      const candidates = [slot, `${slot}_nether`, `${slot}_the_end`];
+      for (const c of candidates) { await rm(path.join(dataDir,c), { recursive:true, force:true }); }
+    }
+    const { exec: execCb } = await import('child_process');
+    const { promisify } = await import('util');
+    const exec = promisify(execCb);
+    await exec(`tar xzf ${JSON.stringify(file)} -C ${JSON.stringify(dataDir)}`);
+    return { restored: true, slot };
+  }
 }

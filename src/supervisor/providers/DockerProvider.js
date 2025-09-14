@@ -105,4 +105,13 @@ export class DockerProvider extends Provider {
       return stdout.split('\n').filter(Boolean);
     } catch { return []; }
   }
+
+  async rcon(name, command) {
+    try {
+      await exec(`docker exec ${name} rcon-cli ${command}`);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
 }

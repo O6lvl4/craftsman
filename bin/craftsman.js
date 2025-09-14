@@ -110,6 +110,29 @@ Options:
       lines.forEach(l => console.log(l));
       return;
     }
+    case 'backup': {
+      const cartridgeId = opts.cartridge || process.argv[process.argv.indexOf('--cartridge')+1];
+      if (!cartridgeId) { console.error('Error: --cartridge is required'); process.exit(1); }
+      const name = opts.name || (process.argv.includes('--name') ? process.argv[process.argv.indexOf('--name')+1] : undefined);
+      const res = await supervisor.backup({ cartridgeId, name });
+      return out({ message: 'backup created', ...res });
+    }
+    case 'backups': {
+      const sub = (opts._sub = process.argv[3]);
+      if (sub !== 'list') { console.error('Usage: craftsman backups list --cartridge <id> [--json]'); process.exit(1); }
+      const cartridgeId = opts.cartridge || process.argv[process.argv.indexOf('--cartridge')+1];
+      if (!cartridgeId) { console.error('Error: --cartridge is required'); process.exit(1); }
+      const list = await supervisor.listBackups({ cartridgeId });
+      return out(list);
+    }
+    case 'restore': {
+      const cartridgeId = opts.cartridge || process.argv[process.argv.indexOf('--cartridge')+1];
+      const file = opts.file || (process.argv.includes('--file') ? process.argv[process.argv.indexOf('--file')+1] : undefined);
+      const keepCurrent = !!(opts.keepCurrent || process.argv.includes('--keep-current'));
+      if (!cartridgeId || !file) { console.error('Usage: craftsman restore --cartridge <id> --file <path> [--keep-current]'); process.exit(1); }
+      const res = await supervisor.restore({ cartridgeId, file, keepCurrent });
+      return out({ message: 'restored', ...res });
+    }
     case 'cartridge': {
       const sub = (opts._sub = process.argv[3]);
       const { CartridgeManager } = await import('../src/cartridge/CartridgeManager.js');

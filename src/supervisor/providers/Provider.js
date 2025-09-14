@@ -4,5 +4,5 @@ export class Provider {
   async start(opts) { throw new Error('Not implemented'); }
   async stop(name, { forceKill } = {}) { throw new Error('Not implemented'); }
   async logs(name, { tail } = {}) { throw new Error('Not implemented'); }
+  async rcon(name, command) { throw new Error('Not implemented'); }
 }
-
