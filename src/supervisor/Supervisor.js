@@ -83,6 +83,9 @@ export class Supervisor {
       } catch { slot = slot || 'world'; }
     }
 
+    // 拡張（プラグイン/Mod）を適用（冪等）
+    await this._applyExtensions({ cartridgeId, type });
+
     const run = await this.provider.start({
       containerName: name,
       type,
@@ -108,6 +111,38 @@ export class Supervisor {
     });
 
     return run;
+  }
+
+  async _applyExtensions({ cartridgeId, type }) {
+    // カセットの依存拡張をユーザーストレージから data/ に同期する
+    // Paper: /data/plugins, Fabric/NeoForge: /data/mods
+    const base = this._cartDataDir(cartridgeId);
+    const dest = path.join(base, type === 'paper' ? 'plugins' : 'mods');
+    await fs.mkdir(dest, { recursive: true });
+    // 既存の適用済み（craftsman 管理）を除去
+    const manifestPath = path.join(base, '.craftsman-ext.json');
+    let prev = [];
+    try { prev = JSON.parse(await fs.readFile(manifestPath, 'utf8')).files || []; } catch {}
+    for (const f of prev) {
+      try { await fs.unlink(path.join(base, f)); } catch {}
+    }
+    // 依存を取得
+    const meta = JSON.parse(await fs.readFile(this._cartMetaPath(cartridgeId), 'utf8'));
+    const deps = meta.extensions || [];
+    const applied = [];
+    for (const d of deps) {
+      // ユーザーストレージ: ~/.craftsman/extensions/<store>/<projectId>/<versionId>/<filename>
+      const userBase = process.env.CRAFTSMAN_EXT_HOME || path.join(process.env.HOME || process.env.USERPROFILE || process.cwd(), '.craftsman', 'extensions');
+      const src = path.join(userBase, d.store, String(d.projectId), String(d.versionId), d.filename);
+      const dst = path.join(dest, d.filename);
+      try {
+        await fs.copyFile(src, dst);
+        applied.push(path.relative(base, dst));
+      } catch (e) {
+        throw new Error(`Extension not found: ${src}`);
+      }
+    }
+    await fs.writeFile(manifestPath, JSON.stringify({ files: applied }, null, 2));
   }
 
   async stop({ cartridgeId, forceKill = false } = {}) {

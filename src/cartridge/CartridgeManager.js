@@ -49,6 +49,7 @@ export class CartridgeManager {
       engine: { serverType: type, version },
       activeSlot: '',
       saves: { slots: [] },
+      extensions: [],
       createdAt: new Date().toISOString()
     };
     await fs.writeFile(path.join(dir, 'cartridge.json'), JSON.stringify(meta, null, 2));
@@ -94,6 +95,24 @@ export class CartridgeManager {
     }
     const spec = { type: meta.engine.serverType, version: meta.engine.version, cartridgeId: id, slot: slot || meta.activeSlot || '' };
     return { applied: true, spec };
+  }
+
+  async addExtension({ id, store, projectId, versionId, filename }) {
+    if (!id || !store || !projectId || !versionId || !filename) throw new Error('id, store, projectId, versionId, filename are required');
+    const metaPath = path.join(this.cartsDir, id, 'cartridge.json');
+    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+    // 同一 store+projectId は上書き（バージョン切り替え）。バージョン違いの重複使用は防ぐ
+    const deps = (meta.extensions || []).filter(d => !(d.store===store && d.projectId===projectId));
+    deps.push({ store, projectId, versionId, filename });
+    meta.extensions = deps;
+    await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
+    return deps;
+  }
+
+  async listExtensions({ id }) {
+    const metaPath = path.join(this.cartsDir, id, 'cartridge.json');
+    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+    return meta.extensions || [];
   }
 
   async setActive({ id, slot }) {
