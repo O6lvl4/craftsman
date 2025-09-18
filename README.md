@@ -1,156 +1,111 @@
 # Craftsman
 
-Minecraft サーバー管理の最小・堅牢な CLI。Docker 版 itzg/minecraft-server を第一級の実行プロバイダとして採用し、カセット（Pak）を単位に冪等的な起動/停止/バックアップ/リストアを提供します。
+Minecraft サーバー管理の最小・堅牢な CLI。Craftsman 2.0 では TypeScript + Ink によるモダンなインターフェースを採用し、パイプ可能な出力と対話的フローの両立、フェイルセーフな運用を実現しました。Docker 版 itzg/minecraft-server を第一級の実行プロバイダとして扱い、Pak（旧 cartridge）単位で冪等的な起動・停止・バックアップ・ロールバックを提供します。
 
 ## インストール（グローバル）
 
-前提: Docker が動作していること（`docker ps` が成功）
+前提: Docker が動作していること（`docker ps` が成功する状態）
 
 1) リポジトリ直下で（publish 不要）
 
+   ```bash
    npm run install:global
+   ```
 
-   もしくは開発向けリンク
+   開発用にローカルリンクする場合は
 
+   ```bash
    npm run link:global
+   ```
 
-2) 確認
+2) 動作確認
 
-   craftsman --help
+   ```bash
+   craftsman help
+   ```
 
-## 基本コマンド（サーバ）
+   実行すると ASCII アートバナーと共にコマンド一覧が表示されます。
 
-- ステータス
+## Craftsman 2.0 CLI
 
-  - すべてのカセット: `craftsman status [--json]`
-  - 個別カセット: `craftsman status --pak <id> [--json]`
+### 核心原則
+- **Zero-config Start**: 設定ファイルなしで即 `craftsman up` からプレイ開始。
+- **Progressive Disclosure**: 単純操作は引数ゼロでも実行、必要なときだけ追加情報を要求。
+- **Fail-safe Operations**: 破壊的操作は必ず確認とバックアップを経て実行。
+- **Stream-first**: すべての出力がパイプ可能。TTY では対話フロー、非 TTY では静的フォーマットに自動切り替え。
 
-- 起動（冪等）
+### 代表的なコマンド
+```bash
+craftsman help                          # ASCII アート & コマンド概要
+craftsman up my-world --type paper      # 既存なら起動、無ければ作成して起動
+craftsman start server my-world         # 明示的に起動（resource 省略可）
+craftsman stop                          # 最後に操作したサーバー / 単一稼働サーバーを停止
+craftsman backup                        # アクティブサーバーをバックアップ（自動命名）
+craftsman logs --tail 200 --json        # ログを JSON で取得（パイプ向け）
+craftsman list servers --quiet          # サーバー ID のみを列挙
+```
 
-  `craftsman start --pak <id> [--slot <slot>] [--type paper|fabric|neoforge] [--version <ver>] [--memory 8G] [--eula true] [--onlineMode true] [--motd "..."] [--rconEnabled true] [--rconPassword ...]`
+### コンテキスト認識 & フェイルセーフ
+- 引数省略時は **最後に触ったサーバー** や **現在稼働中の唯一のサーバー** を自動選択。
+- `craftsman delete` は TTY で確認プロンプトを表示、非対話環境では `--force` が必須。
+- Backups は RCON 経由で `save-off → save-all flush → tar → save-on` を自動実行。
 
-  備考: `--type/--version` を省略すると、カセットの `pak.json`（engine）を使用。`--slot` 未指定時は `activeSlot` を使用。内部的にはカセットの data/ をコンテナ `/data` にマウントし、`LEVEL=<slot>` でワールドを選択します。
+### 拡張ワークフロー
+| ワークフロー | コマンド | 説明 |
+| --- | --- | --- |
+| クイックスタート | `craftsman quickstart` | ID を自動生成し、作成→起動→接続情報表示を一括実行 |
+| アップグレード | `craftsman upgrade alpha --version 1.21.9` | 互換性チェック後にバックアップ→停止→再起動。失敗時は自動ロールバック |
+| マイグレーション | `craftsman migrate alpha --from vanilla --to paper` | エンジン種別を変更し、バックアップ付きで切替 |
+| クローン | `craftsman clone alpha beta` | メタデータ・ワールドをコピーし、ポート競合を避けた新 Pak を作成 |
 
-- 停止
+### 出力フォーマット
+- `--json`, `--yaml`, `--csv`, `--quiet` で明示指定。
+- TTY ではテーブル／対話 UI、非 TTY ではデフォルトでコロン区切りのプレーン形式。
+- すべてのコマンドがストリームフレンドリーな出力を提供し、`| jq` などのパイプ処理に対応。
 
-  `craftsman stop --pak <id> [--force]`
-
-- ログ
-
-  `craftsman logs --pak <id> [--tail 200] [--follow]`
-
-## カセット（Pak）
-
-- 作成
-
-  `craftsman pak create --id <id> --type paper|fabric|neoforge --version <ver> [--name NAME]`
-
-- 一覧
-
-  `craftsman pak list [--json]`
-
-- ワールド保存（移行用：現行の /data/world* → スロットへ取り込み）
-
-  `craftsman pak save --id <id> --slot <slot>`
-
-- アクティブスロット設定
-
-  `craftsman pak set-active --id <id> --slot <slot>`
-
-- 挿入（稼働中は --force 推奨。新モデルでは activeSlot の設定が主目的）
-
-  `craftsman pak insert --id <id> [--slot <slot>] [--force]`
-
-- 拡張（Pak 内 CRUD）
-
-  `craftsman pak extension list --id <id>`
-
-  `craftsman pak extension add --id <id> --store <store> --project <projectId> --version <versionId> --filename <filename>`
-
-  `craftsman pak extension update --id <id> --store <store> --project <projectId> --version <versionId> --filename <filename>`
-
-  `craftsman pak extension remove --id <id> --store <store> --project <projectId>`
-
-## バックアップ / リストア（カセット単位）
-
-- バックアップ（オンライン、RCON で save-off → save-all flush → tar → save-on）
-
-  `craftsman backup --pak <id> [--name NAME] [--json]`
-
-  出力例: `{ file, size, startedAt, finishedAt }`
-
-- バックアップ一覧
-
-  `craftsman backups list --pak <id> [--json]`
-
-- リストア（停止→展開、必要なら現行データ退避）
-
-  `craftsman restore --pak <id> --file <path_to_tgz> [--keep-current]`
-
-  備考: `--keep-current` で `data/restore-backup/<timestamp>/` に退避。
-
-## 例: 新規カセットで遊ぶ（Paper 1.21.8）
-
-1) 作成
-
-   craftsman pak create --id alpha --type paper --version 1.21.8 --name "Alpha"
-
-2) 新規スロットで起動（初回は新しいワールドが生成される）
-
-   craftsman start --pak alpha --slot fresh1 --memory 8G
-
-3) 状態/ログ
-
-   craftsman status --pak alpha --json
-
-   craftsman logs --pak alpha --tail 200 --follow
-
-4) 停止
-
-   craftsman stop --pak alpha
-
-5) バックアップ
-
-   craftsman backup --pak alpha --name first
-
-## 拡張ストア（検索→バージョン→DL→カセット登録）
-
-1) 検索（例）
-
-   craftsman extension store search --store modrinth --query sodium --platform fabric
-
-2) バージョン一覧
-
-   craftsman extension store versions --store modrinth --project <projectId>
-
-3) ダウンロード
-
-   craftsman extension store download --store modrinth --project <projectId> --version <versionId>
-
-4) カセットに依存登録（CRUD）
-
-   craftsman pak extension add --id <id> --store modrinth --project <projectId> --version <versionId> --filename <filename>
-
-   craftsman pak extension list --id <id>
-
-   craftsman pak extension update --id <id> --store ... --project ... --version ... --filename ...
-
-   craftsman pak extension remove --id <id> --store ... --project ...
+### サポートされる主な動詞
+| 動詞 | 説明 |
+| --- | --- |
+| `up` | Pak が存在しなければ作成して起動。存在すればそのまま起動 |
+| `start` / `stop` | サーバーの起動・停止（`server` 省略可） |
+| `status` / `list` / `show` | サーバー一覧・詳細表示（`--json` 等で機械可読な出力） |
+| `logs` | tail ログ取得 (`--tail`, `--follow`) |
+| `backup` / `delete` | バックアップ作成・安全な削除 |
+| `quickstart` / `upgrade` / `migrate` / `clone` | 統合ワークフロー |
 
 ## データ構造（Git 管理外）
 
-- data/ は生成物のため Git 無視（data/README.md 参照）
-- カセット単位の構造
-  - data/
-    - paks/
-      - <id>/
-        - data/           … コンテナ `/data` にマウント（LEVEL=<slot>）
-        - backups/        … バックアップ(.tgz)
-        - runtime.json    … 実行情報（開始時刻・ポート等）
+Pak（サーバー）単位でデータを保持します。`data/` は生成物のため Git から除外されています（`data/README.md` 参照）。
 
-## 備考（オプション）
+```
+data/
+  paks/
+    <pakId>/
+      pak.json        … メタデータ（エンジン種別・バージョン・スロット）
+      data/           … サーバー `/data` としてマウントされる実データ
+        world/        … 初回作成時に自動生成される空ワールド
+      backups/        … `*.tgz` 形式のバックアップ
+      runtime.json    … Provider が記録する稼働情報
+```
 
-- Provider: 既定は Docker。開発用に local を指定可能（`--provider local`）
-- REST API は任意で利用可能（`node src/index.js`）
-  - GET /health
-  - GET /api/server/status / POST /api/server/start / POST /api/server/stop / GET /api/server/logs
+## REST API
+
+CLI と同じ Supervisor/Provider を REST API からも利用可能です。
+
+```bash
+npm run dev:api      # ts-node + Express で API を起動
+```
+
+エンドポイント例:
+- `GET /health`
+- `GET /api/server/status`
+- `POST /api/server/start`
+- `POST /api/server/stop`
+- `GET /api/server/logs`
+
+## 開発メモ
+- CLI（Ink）のホットリロードは `npm run dev:cli` で実行できます。
+- TypeScript ビルド: `npm run build`
+- テスト: `npm test`（ビルド → Jest E2E）
+
+Craftsman 2.0 は「3 分でマルチプレイ」を合言葉に、ゼロコンフィグ・安全・ストリームフレンドリーな Minecraft サーバー運用を目指しています。`craftsman help` から気軽にお試しください。
