@@ -8,10 +8,10 @@ export class Supervisor {
     this.runtimePath = path.join(this.dataDir, 'runtime.json'); // legacy
   }
 
-  _cartDir(id) { return path.join(this.dataDir, 'cartridges', id); }
-  _cartDataDir(id) { return path.join(this._cartDir(id), 'data'); }
-  _cartMetaPath(id) { return path.join(this._cartDir(id), 'cartridge.json'); }
-  _runtimePath(id) { return path.join(this._cartDir(id), 'runtime.json'); }
+  _pakDir(id) { return path.join(this.dataDir, 'paks', id); }
+  _pakDataDir(id) { return path.join(this._pakDir(id), 'data'); }
+  _pakMetaPath(id) { return path.join(this._pakDir(id), 'pak.json'); }
+  _runtimePath(id) { return path.join(this._pakDir(id), 'runtime.json'); }
 
   async _readRuntime(id) {
     if (id) {
@@ -25,21 +25,21 @@ export class Supervisor {
 
   async _writeRuntime(id, obj) {
     if (id) {
-      await fs.mkdir(this._cartDir(id), { recursive: true });
+      await fs.mkdir(this._pakDir(id), { recursive: true });
       return fs.writeFile(this._runtimePath(id), JSON.stringify(obj, null, 2));
     }
     await fs.mkdir(this.dataDir, { recursive: true }); // legacy
     await fs.writeFile(this.runtimePath, JSON.stringify(obj, null, 2));
   }
 
-  async status({ cartridgeId } = {}) {
-    if (!cartridgeId) throw new Error('cartridgeId is required');
-    const name = `mc-${cartridgeId}`;
-    const rt = await this._readRuntime(cartridgeId);
+  async status({ pakId } = {}) {
+    if (!pakId) throw new Error('pakId is required');
+    const name = `mc-${pakId}`;
+    const rt = await this._readRuntime(pakId);
     const p = await this.provider.status(name);
     // Normalize
     return {
-      id: cartridgeId,
+      id: pakId,
       running: p.running,
       type: p.type || rt.type,
       version: p.version || rt.version,
@@ -50,41 +50,41 @@ export class Supervisor {
   }
 
   async statuses() {
-    const root = path.join(this.dataDir, 'cartridges');
+    const root = path.join(this.dataDir, 'paks');
     let ids = [];
     try { ids = await fs.readdir(root); } catch { ids = []; }
     const out = [];
     for (const id of ids) {
-      const stat = await this.status({ cartridgeId: id }).catch(() => null);
+      const stat = await this.status({ pakId: id }).catch(() => null);
       if (stat) out.push(stat);
     }
     return out;
   }
 
-  async start({ cartridgeId, slot, type, version, memory = '4G', eula = true, onlineMode = true, motd, rconEnabled = true, rconPassword } = {}) {
-    if (!cartridgeId) throw new Error('cartridgeId is required');
-    const name = `mc-${cartridgeId}`;
+  async start({ pakId, slot, type, version, memory = '4G', eula = true, onlineMode = true, motd, rconEnabled = true, rconPassword } = {}) {
+    if (!pakId) throw new Error('pakId is required');
+    const name = `mc-${pakId}`;
     const existed = await this.provider.status(name);
     if (existed.running) {
       const err = new Error('Server is already running');
       err.code = 'ALREADY_RUNNING';
       throw err;
     }
-    // resolve cartridge meta
+    // resolve pak meta
     if (!type || !version) {
-      const meta = JSON.parse(await fs.readFile(this._cartMetaPath(cartridgeId), 'utf8'));
+      const meta = JSON.parse(await fs.readFile(this._pakMetaPath(pakId), 'utf8'));
       type = type || meta.engine?.serverType || 'paper';
       version = version || meta.engine?.version || '1.21.8';
       slot = slot || meta.activeSlot || 'world';
     } else {
       try {
-        const meta = JSON.parse(await fs.readFile(this._cartMetaPath(cartridgeId), 'utf8'));
+        const meta = JSON.parse(await fs.readFile(this._pakMetaPath(pakId), 'utf8'));
         slot = slot || meta.activeSlot || 'world';
       } catch { slot = slot || 'world'; }
     }
 
     // 拡張（プラグイン/Mod）を適用（冪等）
-    await this._applyExtensions({ cartridgeId, type });
+    await this._applyExtensions({ pakId, type });
 
     const run = await this.provider.start({
       containerName: name,
@@ -97,10 +97,10 @@ export class Supervisor {
       rconEnabled,
       rconPassword,
       level: slot,
-      mountDataDir: this._cartDataDir(cartridgeId)
+      mountDataDir: this._pakDataDir(pakId)
     });
 
-    await this._writeRuntime(cartridgeId, {
+    await this._writeRuntime(pakId, {
       containerName: name,
       type,
       version,
@@ -113,10 +113,10 @@ export class Supervisor {
     return run;
   }
 
-  async _applyExtensions({ cartridgeId, type }) {
+  async _applyExtensions({ pakId, type }) {
     // カセットの依存拡張をユーザーストレージから data/ に同期する
     // Paper: /data/plugins, Fabric/NeoForge: /data/mods
-    const base = this._cartDataDir(cartridgeId);
+    const base = this._pakDataDir(pakId);
     const dest = path.join(base, type === 'paper' ? 'plugins' : 'mods');
     await fs.mkdir(dest, { recursive: true });
     // 既存の適用済み（craftsman 管理）を除去
@@ -127,7 +127,7 @@ export class Supervisor {
       try { await fs.unlink(path.join(base, f)); } catch {}
     }
     // 依存を取得
-    const meta = JSON.parse(await fs.readFile(this._cartMetaPath(cartridgeId), 'utf8'));
+    const meta = JSON.parse(await fs.readFile(this._pakMetaPath(pakId), 'utf8'));
     const deps = meta.extensions || [];
     const applied = [];
     for (const d of deps) {
@@ -145,29 +145,29 @@ export class Supervisor {
     await fs.writeFile(manifestPath, JSON.stringify({ files: applied }, null, 2));
   }
 
-  async stop({ cartridgeId, forceKill = false } = {}) {
-    if (!cartridgeId) throw new Error('cartridgeId is required');
-    const name = `mc-${cartridgeId}`;
-    const rt = await this._readRuntime(cartridgeId);
+  async stop({ pakId, forceKill = false } = {}) {
+    if (!pakId) throw new Error('pakId is required');
+    const name = `mc-${pakId}`;
+    const rt = await this._readRuntime(pakId);
     const out = await this.provider.stop(name, { forceKill });
-    await this._writeRuntime(cartridgeId, { ...rt, startedAt: null });
+    await this._writeRuntime(pakId, { ...rt, startedAt: null });
     return out;
   }
 
-  async logs({ cartridgeId, tail = 200 } = {}) {
-    if (!cartridgeId) throw new Error('cartridgeId is required');
-    const name = `mc-${cartridgeId}`;
+  async logs({ pakId, tail = 200 } = {}) {
+    if (!pakId) throw new Error('pakId is required');
+    const name = `mc-${pakId}`;
     return await this.provider.logs(name, { tail });
   }
 
-  async backup({ cartridgeId, name } = {}) {
-    if (!cartridgeId) throw new Error('cartridgeId is required');
+  async backup({ pakId, name } = {}) {
+    if (!pakId) throw new Error('pakId is required');
     const startedAt = Date.now();
-    const meta = JSON.parse(await fs.readFile(this._cartMetaPath(cartridgeId), 'utf8'));
-    const rt = await this._readRuntime(cartridgeId);
+    const meta = JSON.parse(await fs.readFile(this._pakMetaPath(pakId), 'utf8'));
+    const rt = await this._readRuntime(pakId);
     const slot = rt.slot || meta.activeSlot || 'world';
-    const containerName = `mc-${cartridgeId}`;
-    const backupsDir = path.join(this._cartDir(cartridgeId), 'backups');
+    const containerName = `mc-${pakId}`;
+    const backupsDir = path.join(this._pakDir(pakId), 'backups');
     await fs.mkdir(backupsDir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:T]/g, '-').replace(/\..+/, '');
     const base = name || `backup-${stamp}`;
@@ -179,7 +179,7 @@ export class Supervisor {
     await new Promise(r => setTimeout(r, 1000));
 
     // Build tar of level directories
-    const dataDir = this._cartDataDir(cartridgeId);
+    const dataDir = this._pakDataDir(pakId);
     const entries = [slot, `${slot}_nether`, `${slot}_the_end`];
     const fsEntries = [];
     for (const e of entries) {
@@ -199,9 +199,9 @@ export class Supervisor {
     return { file, size: stat.size, startedAt: new Date(startedAt).toISOString(), finishedAt: new Date().toISOString() };
   }
 
-  async listBackups({ cartridgeId } = {}) {
-    if (!cartridgeId) throw new Error('cartridgeId is required');
-    const dir = path.join(this._cartDir(cartridgeId), 'backups');
+  async listBackups({ pakId } = {}) {
+    if (!pakId) throw new Error('pakId is required');
+    const dir = path.join(this._pakDir(pakId), 'backups');
     let files = [];
     try { files = await fs.readdir(dir); } catch { return []; }
     const out = [];
@@ -214,15 +214,15 @@ export class Supervisor {
     return out.sort((a,b)=> (a.modifiedAt < b.modifiedAt ? 1 : -1));
   }
 
-  async restore({ cartridgeId, file, keepCurrent = true } = {}) {
-    if (!cartridgeId) throw new Error('cartridgeId is required');
+  async restore({ pakId, file, keepCurrent = true } = {}) {
+    if (!pakId) throw new Error('pakId is required');
     if (!file) throw new Error('file is required');
-    const meta = JSON.parse(await fs.readFile(this._cartMetaPath(cartridgeId), 'utf8'));
-    const rt = await this._readRuntime(cartridgeId);
+    const meta = JSON.parse(await fs.readFile(this._pakMetaPath(pakId), 'utf8'));
+    const rt = await this._readRuntime(pakId);
     const slot = rt.slot || meta.activeSlot || 'world';
     // Ensure stopped
-    try { await this.stop({ cartridgeId }); } catch {}
-    const dataDir = this._cartDataDir(cartridgeId);
+    try { await this.stop({ pakId }); } catch {}
+    const dataDir = this._pakDataDir(pakId);
     const backupDir = path.join(dataDir, 'restore-backup', new Date().toISOString().replace(/[:T]/g,'-').replace(/\..+/,''));
     // Move current level dirs if needed
     if (keepCurrent) {

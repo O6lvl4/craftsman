@@ -55,15 +55,15 @@ describe('Craftsman CLI E2E Tests', () => {
   });
 
   describe('Status Command', () => {
-    test('should show status list when no cartridge specified', async () => {
+    test('should show status list when no pak specified', async () => {
       const result = await runCLI(['status']);
       expect(result.code).toBe(0);
     });
 
-    test('should show error when cartridge flag without value', async () => {
-      const result = await runCLI(['status', '--cartridge']);
+    test('should show error when pak flag without value', async () => {
+      const result = await runCLI(['status', '--pak']);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain('Error: --cartridge requires a value');
+      expect(result.stderr).toContain('Error: --pak requires a value');
     });
 
     test('should show status with JSON output', async () => {
@@ -82,16 +82,16 @@ describe('Craftsman CLI E2E Tests', () => {
   });
 
   describe('Start Command', () => {
-    test('should require cartridge parameter', async () => {
+    test('should require pak parameter', async () => {
       const result = await runCLI(['start']);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain('Error: --cartridge is required');
+      expect(result.stderr).toContain('Error: --pak is required');
     });
 
     test('should accept all parameters', async () => {
       const result = await runCLI([
         'start',
-        '--cartridge', 'test-cart',
+        '--pak', 'test-cart',
         '--type', 'paper',
         '--version', '1.21.8',
         '--memory', '4G',
@@ -104,16 +104,16 @@ describe('Craftsman CLI E2E Tests', () => {
   });
 
   describe('Stop Command', () => {
-    test('should require cartridge parameter', async () => {
+    test('should require pak parameter', async () => {
       const result = await runCLI(['stop']);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain('Error: --cartridge is required');
+      expect(result.stderr).toContain('Error: --pak is required');
     });
 
     test('should accept force flag', async () => {
       const result = await runCLI([
         'stop',
-        '--cartridge', 'test-cart',
+        '--pak', 'test-cart',
         '--force'
       ]);
       expect(result.code).toBeDefined();
@@ -121,16 +121,16 @@ describe('Craftsman CLI E2E Tests', () => {
   });
 
   describe('Logs Command', () => {
-    test('should require cartridge parameter', async () => {
+    test('should require pak parameter', async () => {
       const result = await runCLI(['logs']);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain('Error: --cartridge is required');
+      expect(result.stderr).toContain('Error: --pak is required');
     });
 
     test('should accept tail parameter', async () => {
       const result = await runCLI([
         'logs',
-        '--cartridge', 'test-cart',
+        '--pak', 'test-cart',
         '--tail', '100'
       ]);
       expect(result.code).toBeDefined();

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.join(__dirname, '../../bin/craftsman.js');
 const DATA_DIR = path.join(__dirname, '../../data');
-const TEST_CARTRIDGE_DIR = path.join(DATA_DIR, 'cartridges', 'test-e2e-cart');
+const TEST_PAK_DIR = path.join(DATA_DIR, 'paks', 'test-e2e-cart');
 
 function runCLI(args = [], options = {}) {
   return new Promise((resolve, reject) => {
@@ -38,11 +38,11 @@ function runCLI(args = [], options = {}) {
   });
 }
 
-describe('Cartridge Operations E2E Tests', () => {
+describe('Pak Operations E2E Tests', () => {
   beforeEach(async () => {
-    // クリーンアップ: テスト用カートリッジを削除
+    // クリーンアップ: テスト用Pakを削除
     try {
-      await fs.rm(TEST_CARTRIDGE_DIR, { recursive: true, force: true });
+      await fs.rm(TEST_PAK_DIR, { recursive: true, force: true });
     } catch (e) {
       // ディレクトリが存在しない場合は無視
     }
@@ -51,54 +51,54 @@ describe('Cartridge Operations E2E Tests', () => {
   afterEach(async () => {
     // テスト後のクリーンアップ
     try {
-      await fs.rm(TEST_CARTRIDGE_DIR, { recursive: true, force: true });
+      await fs.rm(TEST_PAK_DIR, { recursive: true, force: true });
     } catch (e) {
       // ディレクトリが存在しない場合は無視
     }
   });
 
-  describe('Cartridge Help', () => {
-    test('should display cartridge help', async () => {
-      const result = await runCLI(['cartridge']);
+  describe('Pak Help', () => {
+    test('should display pak help', async () => {
+      const result = await runCLI(['pak']);
       expect(result.code).toBe(0);
-      expect(result.stdout).toContain('Craftsman Cartridge');
-      expect(result.stdout).toContain('cartridge create');
-      expect(result.stdout).toContain('cartridge list');
-      expect(result.stdout).toContain('cartridge save');
+      expect(result.stdout).toContain('Craftsman Pak');
+      expect(result.stdout).toContain('pak create');
+      expect(result.stdout).toContain('pak list');
+      expect(result.stdout).toContain('pak save');
     });
 
-    test('should display cartridge help with help subcommand', async () => {
-      const result = await runCLI(['cartridge', 'help']);
+    test('should display pak help with help subcommand', async () => {
+      const result = await runCLI(['pak', 'help']);
       expect(result.code).toBe(0);
-      expect(result.stdout).toContain('Craftsman Cartridge');
+      expect(result.stdout).toContain('Craftsman Pak');
     });
   });
 
-  describe('Cartridge Create', () => {
-    test('should create a new cartridge', async () => {
+  describe('Pak Create', () => {
+    test('should create a new pak', async () => {
       const result = await runCLI([
-        'cartridge', 'create',
+        'pak', 'create',
         '--id', 'test-e2e-cart',
         '--type', 'paper',
         '--version', '1.21.8',
-        '--name', 'Test E2E Cartridge'
+        '--name', 'Test E2E Pak'
       ]);
       expect(result.code).toBe(0);
       expect(result.stdout).toContain('test-e2e-cart');
       
-      // カートリッジディレクトリが作成されていることを確認
-      const exists = await fs.access(TEST_CARTRIDGE_DIR).then(() => true).catch(() => false);
+      // Pak ディレクトリが作成されていることを確認
+      const exists = await fs.access(TEST_PAK_DIR).then(() => true).catch(() => false);
       expect(exists).toBe(true);
       
-      // cartridge.jsonが作成されていることを確認
-      const metaPath = path.join(TEST_CARTRIDGE_DIR, 'cartridge.json');
+      // pak.jsonが作成されていることを確認
+      const metaPath = path.join(TEST_PAK_DIR, 'pak.json');
       const metaExists = await fs.access(metaPath).then(() => true).catch(() => false);
       expect(metaExists).toBe(true);
     });
 
-    test('should create cartridge with JSON output', async () => {
+    test('should create pak with JSON output', async () => {
       const result = await runCLI([
-        'cartridge', 'create',
+        'pak', 'create',
         '--id', 'test-e2e-cart',
         '--type', 'paper',
         '--version', '1.21.8',
@@ -112,71 +112,71 @@ describe('Cartridge Operations E2E Tests', () => {
     });
   });
 
-  describe('Cartridge List', () => {
+  describe('Pak List', () => {
     beforeEach(async () => {
-      // テスト用カートリッジを作成
+      // テスト用Pakを作成
       await runCLI([
-        'cartridge', 'create',
+        'pak', 'create',
         '--id', 'test-e2e-cart',
         '--type', 'paper',
         '--version', '1.21.8'
       ]);
     });
 
-    test('should list cartridges', async () => {
-      const result = await runCLI(['cartridge', 'list']);
+    test('should list paks', async () => {
+      const result = await runCLI(['pak', 'list']);
       expect(result.code).toBe(0);
     });
 
-    test('should list cartridges with JSON output', async () => {
-      const result = await runCLI(['cartridge', 'list', '--json']);
+    test('should list paks with JSON output', async () => {
+      const result = await runCLI(['pak', 'list', '--json']);
       expect(result.code).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(Array.isArray(json)).toBe(true);
-      const testCart = json.find(c => c.id === 'test-e2e-cart');
-      expect(testCart).toBeDefined();
-      expect(testCart.type).toBe('paper');
+      const testPak = json.find(c => c.id === 'test-e2e-cart');
+      expect(testPak).toBeDefined();
+      expect(testPak.type).toBe('paper');
     });
   });
 
-  describe('Cartridge Save', () => {
+  describe('Pak Save', () => {
     beforeEach(async () => {
-      // テスト用カートリッジを作成
+      // テスト用Pakを作成
       await runCLI([
-        'cartridge', 'create',
+        'pak', 'create',
         '--id', 'test-e2e-cart',
         '--type', 'paper',
         '--version', '1.21.8'
       ]);
     });
 
-    test('should save cartridge slot', async () => {
+    test('should save pak slot', async () => {
       const result = await runCLI([
-        'cartridge', 'save',
+        'pak', 'save',
         '--id', 'test-e2e-cart',
         '--slot', 'test-slot'
       ]);
       expect(result.code).toBe(0);
       
-      // saves/test-slotディレクトリが作成されることを確認
-      const savePath = path.join(TEST_CARTRIDGE_DIR, 'saves', 'test-slot');
+      // data/test-slotディレクトリが作成されることを確認
+      const savePath = path.join(TEST_PAK_DIR, 'data', 'test-slot');
       const exists = await fs.access(savePath).then(() => true).catch(() => false);
       expect(exists).toBe(true);
     });
   });
 
-  describe('Cartridge Set Active', () => {
+  describe('Pak Set Active', () => {
     beforeEach(async () => {
-      // テスト用カートリッジを作成
+      // テスト用Pakを作成
       await runCLI([
-        'cartridge', 'create',
+        'pak', 'create',
         '--id', 'test-e2e-cart',
         '--type', 'paper',
         '--version', '1.21.8'
       ]);
       // スロットを保存
       await runCLI([
-        'cartridge', 'save',
+        'pak', 'save',
         '--id', 'test-e2e-cart',
         '--slot', 'test-slot'
       ]);
@@ -184,7 +184,7 @@ describe('Cartridge Operations E2E Tests', () => {
 
     test('should set active slot', async () => {
       const result = await runCLI([
-        'cartridge', 'set-active',
+        'pak', 'set-active',
         '--id', 'test-e2e-cart',
         '--slot', 'test-slot'
       ]);
@@ -192,7 +192,7 @@ describe('Cartridge Operations E2E Tests', () => {
       
       // JSONで確認
       const resultJson = await runCLI([
-        'cartridge', 'set-active',
+        'pak', 'set-active',
         '--id', 'test-e2e-cart',
         '--slot', 'test-slot',
         '--json'
@@ -202,20 +202,20 @@ describe('Cartridge Operations E2E Tests', () => {
     });
   });
 
-  describe('Cartridge Insert', () => {
+  describe('Pak Insert', () => {
     beforeEach(async () => {
-      // テスト用カートリッジを作成
+      // テスト用Pakを作成
       await runCLI([
-        'cartridge', 'create',
+        'pak', 'create',
         '--id', 'test-e2e-cart',
         '--type', 'paper',
         '--version', '1.21.8'
       ]);
     });
 
-    test('should insert cartridge', async () => {
+    test('should insert pak', async () => {
       const result = await runCLI([
-        'cartridge', 'insert',
+        'pak', 'insert',
         '--id', 'test-e2e-cart',
         '--force'
       ]);
@@ -227,16 +227,16 @@ describe('Cartridge Operations E2E Tests', () => {
       expect(exists).toBe(true);
     });
 
-    test('should insert cartridge with specific slot', async () => {
+    test('should insert pak with specific slot', async () => {
       // スロットを作成
       await runCLI([
-        'cartridge', 'save',
+        'pak', 'save',
         '--id', 'test-e2e-cart',
         '--slot', 'test-slot'
       ]);
       
       const result = await runCLI([
-        'cartridge', 'insert',
+        'pak', 'insert',
         '--id', 'test-e2e-cart',
         '--slot', 'test-slot',
         '--force'
@@ -245,11 +245,11 @@ describe('Cartridge Operations E2E Tests', () => {
     });
   });
 
-  describe('Cartridge Extension Operations', () => {
+  describe('Pak Extension Operations', () => {
     beforeEach(async () => {
-      // テスト用カートリッジを作成
+      // テスト用Pakを作成
       await runCLI([
-        'cartridge', 'create',
+        'pak', 'create',
         '--id', 'test-e2e-cart',
         '--type', 'paper',
         '--version', '1.21.8'
@@ -257,15 +257,15 @@ describe('Cartridge Operations E2E Tests', () => {
     });
 
     test('should display extension help', async () => {
-      const result = await runCLI(['cartridge', 'extension']);
+      const result = await runCLI(['pak', 'extension']);
       expect(result.code).toBe(1);
-      expect(result.stdout).toContain('cartridge extension list');
-      expect(result.stdout).toContain('cartridge extension add');
+      expect(result.stdout).toContain('pak extension list');
+      expect(result.stdout).toContain('pak extension add');
     });
 
     test('should list extensions (empty initially)', async () => {
       const result = await runCLI([
-        'cartridge', 'extension', 'list',
+        'pak', 'extension', 'list',
         '--id', 'test-e2e-cart'
       ]);
       expect(result.code).toBe(0);
@@ -275,29 +275,29 @@ describe('Cartridge Operations E2E Tests', () => {
     });
 
     test('should require id for extension list', async () => {
-      const result = await runCLI(['cartridge', 'extension', 'list']);
+      const result = await runCLI(['pak', 'extension', 'list']);
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain('Error: --id <cartridgeId> is required');
+      expect(result.stderr).toContain('Error: --id <pakId> is required');
     });
 
     test('should handle extension add parameters', async () => {
-      const result = await runCLI(['cartridge', 'extension', 'add']);
+      const result = await runCLI(['pak', 'extension', 'add']);
       expect(result.code).toBe(1);
-      expect(result.stdout).toContain('cartridge extension add');
+      expect(result.stdout).toContain('pak extension add');
       expect(result.stdout).toContain('--store');
       expect(result.stdout).toContain('--project');
     });
 
     test('should handle extension update parameters', async () => {
-      const result = await runCLI(['cartridge', 'extension', 'update']);
+      const result = await runCLI(['pak', 'extension', 'update']);
       expect(result.code).toBe(1);
-      expect(result.stdout).toContain('cartridge extension update');
+      expect(result.stdout).toContain('pak extension update');
     });
 
     test('should handle extension remove parameters', async () => {
-      const result = await runCLI(['cartridge', 'extension', 'remove']);
+      const result = await runCLI(['pak', 'extension', 'remove']);
       expect(result.code).toBe(1);
-      expect(result.stdout).toContain('cartridge extension remove');
+      expect(result.stdout).toContain('pak extension remove');
     });
   });
 });

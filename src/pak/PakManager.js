@@ -18,22 +18,24 @@ async function copyDir(src, dest) {
   }
 }
 
-export class CartridgeManager {
+export class PakManager {
   constructor({ dataDir }) {
     this.dataDir = dataDir;
-    this.cartsDir = path.join(this.dataDir, 'cartridges');
+    this.paksDir = path.join(this.dataDir, 'paks');
     this.specPath = path.join(this.dataDir, 'server-spec.json');
   }
 
   async list() {
     const list = [];
-    await ensureDir(this.cartsDir);
-    const ids = await fs.readdir(this.cartsDir).catch(() => []);
+    await ensureDir(this.paksDir);
+    const ids = await fs.readdir(this.paksDir).catch(() => []);
     for (const id of ids) {
-      const metaPath = path.join(this.cartsDir, id, 'cartridge.json');
+      const metaPath = path.join(this.paksDir, id, 'pak.json');
       if (!(await exists(metaPath))) continue;
       const raw = await fs.readFile(metaPath, 'utf8');
       const meta = JSON.parse(raw);
+      meta.type = meta.engine?.serverType || meta.type || '';
+      meta.version = meta.engine?.version || meta.version || '';
       list.push(meta);
     }
     return list;
@@ -41,7 +43,7 @@ export class CartridgeManager {
 
   async create({ id, type, version, name }) {
     if (!id || !type || !version) throw new Error('id, type, version are required');
-    const dir = path.join(this.cartsDir, id);
+    const dir = path.join(this.paksDir, id);
     await ensureDir(dir);
     const meta = {
       id,
@@ -52,25 +54,25 @@ export class CartridgeManager {
       extensions: [],
       createdAt: new Date().toISOString()
     };
-    await fs.writeFile(path.join(dir, 'cartridge.json'), JSON.stringify(meta, null, 2));
+    await fs.writeFile(path.join(dir, 'pak.json'), JSON.stringify(meta, null, 2));
     await ensureDir(path.join(dir, 'data'));
     return meta;
   }
 
   async remove({ id }) {
     if (!id) throw new Error('id is required');
-    const dir = path.join(this.cartsDir, id);
-    if (!(await exists(dir))) throw new Error('cartridge not found');
+    const dir = path.join(this.paksDir, id);
+    if (!(await exists(dir))) throw new Error('pak not found');
     await rmrf(dir);
     return { removed: true, id };
   }
 
   async saveFromCurrent({ id, slot }) {
     if (!id || !slot) throw new Error('id and slot are required');
-    const dir = path.join(this.cartsDir, id);
-    const metaPath = path.join(dir, 'cartridge.json');
+    const dir = path.join(this.paksDir, id);
+    const metaPath = path.join(dir, 'pak.json');
     const savesDir = path.join(dir, 'data');
-    if (!(await exists(metaPath))) throw new Error('cartridge not found');
+    if (!(await exists(metaPath))) throw new Error('pak not found');
     const raw = await fs.readFile(metaPath, 'utf8');
     const meta = JSON.parse(raw);
     const slotDir = path.join(savesDir, slot);
@@ -90,9 +92,9 @@ export class CartridgeManager {
 
   async insert({ id, slot, force = false }) {
     if (!id) throw new Error('id is required');
-    const dir = path.join(this.cartsDir, id);
-    const metaPath = path.join(dir, 'cartridge.json');
-    if (!(await exists(metaPath))) throw new Error('cartridge not found');
+    const dir = path.join(this.paksDir, id);
+    const metaPath = path.join(dir, 'pak.json');
+    if (!(await exists(metaPath))) throw new Error('pak not found');
     const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
     // 新方式: activeSlot のみ更新。LEVEL は起動時に適用。
     if (slot) {
@@ -101,13 +103,13 @@ export class CartridgeManager {
       meta.activeSlot = slot;
       await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
     }
-    const spec = { type: meta.engine.serverType, version: meta.engine.version, cartridgeId: id, slot: slot || meta.activeSlot || '' };
+    const spec = { type: meta.engine.serverType, version: meta.engine.version, pakId: id, slot: slot || meta.activeSlot || '' };
     return { applied: true, spec };
   }
 
   async addExtension({ id, store, projectId, versionId, filename }) {
     if (!id || !store || !projectId || !versionId || !filename) throw new Error('id, store, projectId, versionId, filename are required');
-    const metaPath = path.join(this.cartsDir, id, 'cartridge.json');
+    const metaPath = path.join(this.paksDir, id, 'pak.json');
     const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
     // 同一 store+projectId は上書き（バージョン切り替え）。バージョン違いの重複使用は防ぐ
     const deps = (meta.extensions || []).filter(d => !(d.store===store && d.projectId===projectId));
@@ -118,14 +120,14 @@ export class CartridgeManager {
   }
 
   async listExtensions({ id }) {
-    const metaPath = path.join(this.cartsDir, id, 'cartridge.json');
+    const metaPath = path.join(this.paksDir, id, 'pak.json');
     const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
     return meta.extensions || [];
   }
 
   async updateExtension({ id, store, projectId, versionId, filename }) {
     if (!id || !store || !projectId || !versionId || !filename) throw new Error('id, store, projectId, versionId, filename are required');
-    const metaPath = path.join(this.cartsDir, id, 'cartridge.json');
+    const metaPath = path.join(this.paksDir, id, 'pak.json');
     const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
     const exts = meta.extensions || [];
     const idx = exts.findIndex(d => d.store===store && d.projectId===projectId);
@@ -138,7 +140,7 @@ export class CartridgeManager {
 
   async removeExtension({ id, store, projectId }) {
     if (!id || !store || !projectId) throw new Error('id, store, projectId are required');
-    const metaPath = path.join(this.cartsDir, id, 'cartridge.json');
+    const metaPath = path.join(this.paksDir, id, 'pak.json');
     const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
     const before = (meta.extensions || []).length;
     meta.extensions = (meta.extensions || []).filter(d => !(d.store===store && d.projectId===projectId));
@@ -148,9 +150,9 @@ export class CartridgeManager {
 
   async setActive({ id, slot }) {
     if (!id || !slot) throw new Error('id and slot are required');
-    const metaPath = path.join(this.cartsDir, id, 'cartridge.json');
+    const metaPath = path.join(this.paksDir, id, 'pak.json');
     const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
-    const slotDir = path.join(this.cartsDir, id, 'data', slot);
+    const slotDir = path.join(this.paksDir, id, 'data', slot);
     if (!(await exists(slotDir))) throw new Error(`slot not found: ${slot}`);
     meta.activeSlot = slot;
     await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
