@@ -5,299 +5,77 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.join(__dirname, '../../bin/craftsman.js');
-const DATA_DIR = path.join(__dirname, '../../data');
-const TEST_PAK_DIR = path.join(DATA_DIR, 'paks', 'test-e2e-cart');
+const TEST_DATA_DIR = path.join(__dirname, '../../tmp/e2e-pak-data');
 
-function runCLI(args = [], options = {}) {
+async function runCLI(args = []) {
+  await fs.mkdir(TEST_DATA_DIR, { recursive: true });
   return new Promise((resolve, reject) => {
     const proc = spawn('node', [CLI_PATH, ...args], {
-      ...options,
-      env: { ...process.env, ...options.env }
+      env: {
+        ...process.env,
+        CRAFTSMAN_DATA_DIR: TEST_DATA_DIR,
+        CRAFTSMAN_PROVIDER: 'local',
+        PROVIDER: 'local'
+      }
     });
-    
+
     let stdout = '';
     let stderr = '';
-    
+
     proc.stdout.on('data', (data) => {
       stdout += data.toString();
     });
-    
+
     proc.stderr.on('data', (data) => {
       stderr += data.toString();
     });
-    
-    proc.on('close', (code) => {
-      resolve({
-        code,
-        stdout,
-        stderr
-      });
-    });
-    
+
+    proc.on('close', (code) => resolve({ code, stdout, stderr }));
     proc.on('error', reject);
   });
 }
 
-describe('Pak Operations E2E Tests', () => {
+async function cleanDir() {
+  await fs.rm(TEST_DATA_DIR, { recursive: true, force: true });
+}
+
+describe('Craftsman workflow commands', () => {
   beforeEach(async () => {
-    // クリーンアップ: テスト用Pakを削除
-    try {
-      await fs.rm(TEST_PAK_DIR, { recursive: true, force: true });
-    } catch (e) {
-      // ディレクトリが存在しない場合は無視
-    }
+    await cleanDir();
   });
 
-  afterEach(async () => {
-    // テスト後のクリーンアップ
-    try {
-      await fs.rm(TEST_PAK_DIR, { recursive: true, force: true });
-    } catch (e) {
-      // ディレクトリが存在しない場合は無視
-    }
+  test('argument reordering works for up command', async () => {
+    const result = await runCLI(['up', '1.21.8', 'e2e-order', 'paper']);
+    expect(result.code).toBe(0);
+    const metaPath = path.join(TEST_DATA_DIR, 'paks', 'e2e-order', 'pak.json');
+    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+    expect(meta.engine.serverType).toBe('paper');
+    expect(meta.engine.version).toBe('1.21.8');
+    await runCLI(['stop', 'e2e-order']);
   });
 
-  describe('Pak Help', () => {
-    test('should display pak help', async () => {
-      const result = await runCLI(['pak']);
-      expect(result.code).toBe(0);
-      expect(result.stdout).toContain('Craftsman Pak');
-      expect(result.stdout).toContain('pak create');
-      expect(result.stdout).toContain('pak list');
-      expect(result.stdout).toContain('pak save');
-    });
+  test('clone duplicates metadata to new server', async () => {
+    await runCLI(['up', 'e2e-src', '--type', 'paper']);
+    await runCLI(['stop', 'e2e-src']);
+    const clone = await runCLI(['clone', 'e2e-src', 'e2e-dest']);
+    expect(clone.code).toBe(0);
 
-    test('should display pak help with help subcommand', async () => {
-      const result = await runCLI(['pak', 'help']);
-      expect(result.code).toBe(0);
-      expect(result.stdout).toContain('Craftsman Pak');
-    });
+    const cloneMetaPath = path.join(TEST_DATA_DIR, 'paks', 'e2e-dest', 'pak.json');
+    const exists = await fs.access(cloneMetaPath).then(() => true).catch(() => false);
+    expect(exists).toBe(true);
+    const meta = JSON.parse(await fs.readFile(cloneMetaPath, 'utf8'));
+    expect(meta.id).toBe('e2e-dest');
   });
 
-  describe('Pak Create', () => {
-    test('should create a new pak', async () => {
-      const result = await runCLI([
-        'pak', 'create',
-        '--id', 'test-e2e-cart',
-        '--type', 'paper',
-        '--version', '1.21.8',
-        '--name', 'Test E2E Pak'
-      ]);
-      expect(result.code).toBe(0);
-      expect(result.stdout).toContain('test-e2e-cart');
-      
-      // Pak ディレクトリが作成されていることを確認
-      const exists = await fs.access(TEST_PAK_DIR).then(() => true).catch(() => false);
-      expect(exists).toBe(true);
-      
-      // pak.jsonが作成されていることを確認
-      const metaPath = path.join(TEST_PAK_DIR, 'pak.json');
-      const metaExists = await fs.access(metaPath).then(() => true).catch(() => false);
-      expect(metaExists).toBe(true);
-    });
+  test('upgrade updates engine version with backup', async () => {
+    await runCLI(['up', 'e2e-upgrade', '--type', 'paper', '--version', '1.21.8']);
+    const upgrade = await runCLI(['upgrade', 'e2e-upgrade', '--version', '1.21.9']);
+    expect(upgrade.code).toBe(0);
+    expect(upgrade.stdout.toLowerCase()).toContain('upgraded e2e-upgrade');
 
-    test('should create pak with JSON output', async () => {
-      const result = await runCLI([
-        'pak', 'create',
-        '--id', 'test-e2e-cart',
-        '--type', 'paper',
-        '--version', '1.21.8',
-        '--json'
-      ]);
-      expect(result.code).toBe(0);
-      const json = JSON.parse(result.stdout);
-      expect(json.created).toBe('test-e2e-cart');
-      expect(json.type).toBe('paper');
-      expect(json.version).toBe('1.21.8');
-    });
-  });
-
-  describe('Pak List', () => {
-    beforeEach(async () => {
-      // テスト用Pakを作成
-      await runCLI([
-        'pak', 'create',
-        '--id', 'test-e2e-cart',
-        '--type', 'paper',
-        '--version', '1.21.8'
-      ]);
-    });
-
-    test('should list paks', async () => {
-      const result = await runCLI(['pak', 'list']);
-      expect(result.code).toBe(0);
-    });
-
-    test('should list paks with JSON output', async () => {
-      const result = await runCLI(['pak', 'list', '--json']);
-      expect(result.code).toBe(0);
-      const json = JSON.parse(result.stdout);
-      expect(Array.isArray(json)).toBe(true);
-      const testPak = json.find(c => c.id === 'test-e2e-cart');
-      expect(testPak).toBeDefined();
-      expect(testPak.type).toBe('paper');
-    });
-  });
-
-  describe('Pak Save', () => {
-    beforeEach(async () => {
-      // テスト用Pakを作成
-      await runCLI([
-        'pak', 'create',
-        '--id', 'test-e2e-cart',
-        '--type', 'paper',
-        '--version', '1.21.8'
-      ]);
-    });
-
-    test('should save pak slot', async () => {
-      const result = await runCLI([
-        'pak', 'save',
-        '--id', 'test-e2e-cart',
-        '--slot', 'test-slot'
-      ]);
-      expect(result.code).toBe(0);
-      
-      // data/test-slotディレクトリが作成されることを確認
-      const savePath = path.join(TEST_PAK_DIR, 'data', 'test-slot');
-      const exists = await fs.access(savePath).then(() => true).catch(() => false);
-      expect(exists).toBe(true);
-    });
-  });
-
-  describe('Pak Set Active', () => {
-    beforeEach(async () => {
-      // テスト用Pakを作成
-      await runCLI([
-        'pak', 'create',
-        '--id', 'test-e2e-cart',
-        '--type', 'paper',
-        '--version', '1.21.8'
-      ]);
-      // スロットを保存
-      await runCLI([
-        'pak', 'save',
-        '--id', 'test-e2e-cart',
-        '--slot', 'test-slot'
-      ]);
-    });
-
-    test('should set active slot', async () => {
-      const result = await runCLI([
-        'pak', 'set-active',
-        '--id', 'test-e2e-cart',
-        '--slot', 'test-slot'
-      ]);
-      expect(result.code).toBe(0);
-      
-      // JSONで確認
-      const resultJson = await runCLI([
-        'pak', 'set-active',
-        '--id', 'test-e2e-cart',
-        '--slot', 'test-slot',
-        '--json'
-      ]);
-      const json = JSON.parse(resultJson.stdout);
-      expect(json.activeSlot).toBe('test-slot');
-    });
-  });
-
-  describe('Pak Insert', () => {
-    beforeEach(async () => {
-      // テスト用Pakを作成
-      await runCLI([
-        'pak', 'create',
-        '--id', 'test-e2e-cart',
-        '--type', 'paper',
-        '--version', '1.21.8'
-      ]);
-    });
-
-    test('should insert pak', async () => {
-      const result = await runCLI([
-        'pak', 'insert',
-        '--id', 'test-e2e-cart',
-        '--force'
-      ]);
-      expect(result.code).toBe(0);
-      
-      // runtime.jsonが作成されることを確認
-      const runtimePath = path.join(DATA_DIR, 'runtime.json');
-      const exists = await fs.access(runtimePath).then(() => true).catch(() => false);
-      expect(exists).toBe(true);
-    });
-
-    test('should insert pak with specific slot', async () => {
-      // スロットを作成
-      await runCLI([
-        'pak', 'save',
-        '--id', 'test-e2e-cart',
-        '--slot', 'test-slot'
-      ]);
-      
-      const result = await runCLI([
-        'pak', 'insert',
-        '--id', 'test-e2e-cart',
-        '--slot', 'test-slot',
-        '--force'
-      ]);
-      expect(result.code).toBe(0);
-    });
-  });
-
-  describe('Pak Extension Operations', () => {
-    beforeEach(async () => {
-      // テスト用Pakを作成
-      await runCLI([
-        'pak', 'create',
-        '--id', 'test-e2e-cart',
-        '--type', 'paper',
-        '--version', '1.21.8'
-      ]);
-    });
-
-    test('should display extension help', async () => {
-      const result = await runCLI(['pak', 'extension']);
-      expect(result.code).toBe(1);
-      expect(result.stdout).toContain('pak extension list');
-      expect(result.stdout).toContain('pak extension add');
-    });
-
-    test('should list extensions (empty initially)', async () => {
-      const result = await runCLI([
-        'pak', 'extension', 'list',
-        '--id', 'test-e2e-cart'
-      ]);
-      expect(result.code).toBe(0);
-      const json = JSON.parse(result.stdout);
-      expect(Array.isArray(json)).toBe(true);
-      expect(json.length).toBe(0);
-    });
-
-    test('should require id for extension list', async () => {
-      const result = await runCLI(['pak', 'extension', 'list']);
-      expect(result.code).toBe(1);
-      expect(result.stderr).toContain('Error: --id <pakId> is required');
-    });
-
-    test('should handle extension add parameters', async () => {
-      const result = await runCLI(['pak', 'extension', 'add']);
-      expect(result.code).toBe(1);
-      expect(result.stdout).toContain('pak extension add');
-      expect(result.stdout).toContain('--store');
-      expect(result.stdout).toContain('--project');
-    });
-
-    test('should handle extension update parameters', async () => {
-      const result = await runCLI(['pak', 'extension', 'update']);
-      expect(result.code).toBe(1);
-      expect(result.stdout).toContain('pak extension update');
-    });
-
-    test('should handle extension remove parameters', async () => {
-      const result = await runCLI(['pak', 'extension', 'remove']);
-      expect(result.code).toBe(1);
-      expect(result.stdout).toContain('pak extension remove');
-    });
+    const metaPath = path.join(TEST_DATA_DIR, 'paks', 'e2e-upgrade', 'pak.json');
+    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+    expect(meta.engine.version).toBe('1.21.9');
+    await runCLI(['stop', 'e2e-upgrade']);
   });
 });

@@ -5,9 +5,11 @@ node_modules/
 data/**
 !data/.gitkeep
 !data/README.md
+dist/
 
 # Local provider PID (legacy; kept for completeness)
 data/server.pid
 
 # Logs in repo root (if any)
 *.log
+tmp/

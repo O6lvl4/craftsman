@@ -1,156 +1,103 @@
 import { spawn } from 'child_process';
-import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs/promises';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.join(__dirname, '../../bin/craftsman.js');
+const TEST_DATA_DIR = path.join(__dirname, '../../tmp/e2e-cli-data');
 
-function runCLI(args = [], options = {}) {
+async function runCLI(args = [], options = {}) {
+  await fs.mkdir(TEST_DATA_DIR, { recursive: true });
   return new Promise((resolve, reject) => {
     const proc = spawn('node', [CLI_PATH, ...args], {
       ...options,
-      env: { ...process.env, ...options.env }
+      env: {
+        ...process.env,
+        ...options.env,
+        CRAFTSMAN_DATA_DIR: TEST_DATA_DIR,
+        CRAFTSMAN_PROVIDER: 'local',
+        PROVIDER: 'local'
+      }
     });
-    
+
     let stdout = '';
     let stderr = '';
-    
+
     proc.stdout.on('data', (data) => {
       stdout += data.toString();
     });
-    
+
     proc.stderr.on('data', (data) => {
       stderr += data.toString();
     });
-    
+
     proc.on('close', (code) => {
-      resolve({
-        code,
-        stdout,
-        stderr
-      });
+      resolve({ code, stdout, stderr });
     });
-    
+
     proc.on('error', reject);
   });
 }
 
-describe('Craftsman CLI E2E Tests', () => {
-  describe('Help Command', () => {
-    test('should display help when no arguments provided', async () => {
-      const result = await runCLI();
-      expect(result.code).toBe(0);
-      expect(result.stdout).toContain('Craftsman CLI');
-      expect(result.stdout).toContain('Usage:');
-      expect(result.stdout).toContain('craftsman start');
-      expect(result.stdout).toContain('craftsman stop');
-    });
+async function cleanDataDir() {
+  await fs.rm(TEST_DATA_DIR, { recursive: true, force: true });
+}
 
-    test('should display help with explicit help command', async () => {
-      const result = await runCLI(['help']);
-      expect(result.code).toBe(0);
-      expect(result.stdout).toContain('Craftsman CLI');
-    });
+describe('Craftsman CLI 2.0', () => {
+  beforeEach(async () => {
+    await cleanDataDir();
   });
 
-  describe('Status Command', () => {
-    test('should show status list when no pak specified', async () => {
-      const result = await runCLI(['status']);
-      expect(result.code).toBe(0);
-    });
-
-    test('should show error when pak flag without value', async () => {
-      const result = await runCLI(['status', '--pak']);
-      expect(result.code).toBe(1);
-      expect(result.stderr).toContain('Error: --pak requires a value');
-    });
-
-    test('should show status with JSON output', async () => {
-      const result = await runCLI(['status', '--json']);
-      expect(result.code).toBe(0);
-      const isValidJSON = () => {
-        try {
-          JSON.parse(result.stdout);
-          return true;
-        } catch {
-          return false;
-        }
-      };
-      expect(isValidJSON()).toBe(true);
-    });
+  test('help command shows Craftsman banner', async () => {
+    const result = await runCLI(['help']);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('CRAFTSMAN');
+    expect(result.stdout.toLowerCase()).toContain('craftsman 2.0');
   });
 
-  describe('Start Command', () => {
-    test('should require pak parameter', async () => {
-      const result = await runCLI(['start']);
-      expect(result.code).toBe(1);
-      expect(result.stderr).toContain('Error: --pak is required');
-    });
-
-    test('should accept all parameters', async () => {
-      const result = await runCLI([
-        'start',
-        '--pak', 'test-cart',
-        '--type', 'paper',
-        '--version', '1.21.8',
-        '--memory', '4G',
-        '--eula', 'true',
-        '--provider', 'local'
-      ]);
-      // コマンドが実行されることを確認（実際のサーバー起動はモックまたはスキップ）
-      expect(result.code).toBeDefined();
-    });
+  test('short help (-h) omits banner', async () => {
+    const result = await runCLI(['-h']);
+    expect(result.code).toBe(0);
+    expect(result.stdout).not.toContain('CRAFTSMAN');
+    expect(result.stdout.toLowerCase()).toContain('craftsman 2.0');
   });
 
-  describe('Stop Command', () => {
-    test('should require pak parameter', async () => {
-      const result = await runCLI(['stop']);
-      expect(result.code).toBe(1);
-      expect(result.stderr).toContain('Error: --pak is required');
-    });
+  test('up creates and starts a server; status reflects it', async () => {
+    const result = await runCLI(['up', 'e2e-up', '--type', 'paper', '--version', '1.21.8']);
+    expect(result.code).toBe(0);
+    expect(result.stdout.toLowerCase()).toContain('created and started');
 
-    test('should accept force flag', async () => {
-      const result = await runCLI([
-        'stop',
-        '--pak', 'test-cart',
-        '--force'
-      ]);
-      expect(result.code).toBeDefined();
-    });
+    const statusJson = await runCLI(['status', '--json']);
+    expect(statusJson.code).toBe(0);
+    const parsed = JSON.parse(statusJson.stdout);
+    expect(parsed.success).toBe(true);
+    expect(Array.isArray(parsed.data)).toBe(true);
+    const entry = parsed.data.find((s) => s.id === 'e2e-up');
+    expect(entry).toBeDefined();
+    expect(entry.id).toBe('e2e-up');
+
+    const stop = await runCLI(['stop']);
+    expect(stop.code).toBe(0);
+    expect(stop.stdout.toLowerCase()).toContain('stopped');
   });
 
-  describe('Logs Command', () => {
-    test('should require pak parameter', async () => {
-      const result = await runCLI(['logs']);
-      expect(result.code).toBe(1);
-      expect(result.stderr).toContain('Error: --pak is required');
-    });
-
-    test('should accept tail parameter', async () => {
-      const result = await runCLI([
-        'logs',
-        '--pak', 'test-cart',
-        '--tail', '100'
-      ]);
-      expect(result.code).toBeDefined();
-    });
+  test('context-aware backup without specifying target', async () => {
+    await runCLI(['up', 'e2e-back', '--type', 'paper']);
+    const backup = await runCLI(['backup']);
+    expect(backup.code).toBe(0);
+    expect(backup.stdout.toLowerCase()).toContain('backup created');
+    await runCLI(['stop']);
   });
 
-  describe('Provider Options', () => {
-    test('should accept docker provider', async () => {
-      const result = await runCLI(['status', '--provider', 'docker']);
-      expect(result.code).toBe(0);
-    });
-
-    test('should accept local provider', async () => {
-      const result = await runCLI(['status', '--provider', 'local']);
-      expect(result.code).toBe(0);
-    });
-
-    test('should use environment variable PROVIDER', async () => {
-      const result = await runCLI(['status'], { env: { PROVIDER: 'local' } });
-      expect(result.code).toBe(0);
-    });
+  test('delete removes server with --force in non-interactive mode', async () => {
+    await runCLI(['up', 'e2e-delete', '--type', 'paper']);
+    await runCLI(['stop', 'e2e-delete']);
+    const del = await runCLI(['delete', 'e2e-delete', '--force', '--quiet']);
+    expect(del.code).toBe(0);
+    const status = await runCLI(['status', '--json']);
+    const parsed = JSON.parse(status.stdout);
+    const entry = parsed.data.find((s) => s.id === 'e2e-delete');
+    expect(entry).toBeUndefined();
   });
 });
